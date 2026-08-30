@@ -5,33 +5,13 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { Subscription, SubscriptionTier } from "@/types/domain";
-
-const TIERS: { tier: SubscriptionTier; name: string; price: string; features: string[] }[] = [
-  {
-    tier: "starter",
-    name: "Starter",
-    price: "$29/mo",
-    features: ["1 active listing", "Basic match scoring", "Messaging"],
-  },
-  {
-    tier: "growth",
-    name: "Growth",
-    price: "$79/mo",
-    features: ["10 active listings", "Priority match ranking", "Saved tenants", "Email support"],
-  },
-  {
-    tier: "portfolio",
-    name: "Portfolio",
-    price: "$199/mo",
-    features: ["Unlimited listings", "Team seats", "Applicant analytics", "Priority support"],
-  },
-];
+import type { Subscription, SubscriptionPlan, SubscriptionTier } from "@/types/domain";
 
 export function LandlordPricing() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [updating, setUpdating] = useState<SubscriptionTier | null>(null);
   const checkoutResult = searchParams.get("checkout");
 
@@ -39,6 +19,10 @@ export function LandlordPricing() {
     if (!user) return;
     api.getSubscription(user.id).then(setSubscription);
   }, [user]);
+
+  useEffect(() => {
+    api.listSubscriptionPlans().then((loaded) => setPlans([...loaded].sort((a, b) => a.price_cents - b.price_cents)));
+  }, []);
 
   useEffect(() => {
     if (checkoutResult) {
@@ -83,7 +67,7 @@ export function LandlordPricing() {
       )}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        {TIERS.map((t) => {
+        {plans.map((t) => {
           const current = subscription?.tier === t.tier;
           return (
             <Card key={t.tier} className={`p-6 ${current ? "ring-2 ring-brand-500" : ""}`}>
@@ -91,7 +75,9 @@ export function LandlordPricing() {
                 <h2 className="font-semibold text-slate-900">{t.name}</h2>
                 {current && <Badge tone="brand">Current</Badge>}
               </div>
-              <p className="mt-2 text-2xl font-bold text-slate-900">{t.price}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                ${(t.price_cents / 100).toLocaleString()}/{t.billing_period}
+              </p>
               <ul className="mt-4 space-y-1 text-sm text-slate-600">
                 {t.features.map((f) => (
                   <li key={f}>✓ {f}</li>

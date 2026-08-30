@@ -27,6 +27,7 @@ const emptyForm = {
   sqft: 0,
   type: "apartment" as PropertyType,
   available_date: new Date().toISOString().slice(0, 10),
+  lease_term_months: 12,
   pet_policy: "no_pets" as PetPolicyOption,
   amenities: "",
   description: "",
@@ -60,6 +61,7 @@ export function LandlordPropertyForm() {
         sqft: p.sqft ?? 0,
         type: p.type,
         available_date: p.available_date,
+        lease_term_months: p.lease_term_months,
         pet_policy: p.pet_policy,
         amenities: p.amenities.join(", "),
         description: p.description,
@@ -93,6 +95,7 @@ export function LandlordPropertyForm() {
           sqft: form.sqft || null,
           type: form.type,
           available_date: form.available_date,
+          lease_term_months: form.lease_term_months,
           pet_policy: form.pet_policy,
           amenities,
           description: form.description,
@@ -162,6 +165,10 @@ export function LandlordPropertyForm() {
               <Input type="date" required value={form.available_date} onChange={(e) => setForm({ ...form, available_date: e.target.value })} />
             </FormRow>
           </div>
+
+          <FormRow label="Lease term (months)">
+            <Input type="number" min={1} required value={form.lease_term_months} onChange={(e) => setForm({ ...form, lease_term_months: Number(e.target.value) })} />
+          </FormRow>
 
           <div className="grid grid-cols-2 gap-4">
             <FormRow label="Pet policy">

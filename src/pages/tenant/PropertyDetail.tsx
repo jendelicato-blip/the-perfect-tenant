@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { PropertyWithPhotos } from "@/types/domain";
+import { isVerifiedLandlord, type Landlord, type LandlordReview, type PropertyWithPhotos } from "@/types/domain";
 
 export function PropertyDetail() {
   const { id } = useParams<{ id: string }>();
@@ -14,10 +14,19 @@ export function PropertyDetail() {
   const [property, setProperty] = useState<PropertyWithPhotos | null>(null);
   const [applied, setApplied] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [interested, setInterested] = useState(false);
+  const [landlord, setLandlord] = useState<Landlord | null>(null);
+  const [reviews, setReviews] = useState<LandlordReview[]>([]);
 
   useEffect(() => {
     if (!id) return;
-    api.getProperty(id).then(setProperty);
+    api.getProperty(id).then((p) => {
+      setProperty(p);
+      if (p) {
+        api.getLandlordProfile(p.landlord_id).then((l) => setLandlord(l as Landlord | null));
+        api.listLandlordReviews(p.landlord_id).then(setReviews);
+      }
+    });
     if (user?.role === "tenant") {
       api.listApplicationsForTenant(user.id).then((apps) => {
         const existing = apps.find((a) => a.property_id === id);
@@ -44,6 +53,14 @@ export function PropertyDetail() {
     navigate(`/messages/${conversation.id}`);
   }
 
+  async function handleInterested() {
+    if (!user || !property) return;
+    const nowInterested = await api.toggleTenantInterest(user.id, property.id);
+    setInterested(nowInterested);
+  }
+
+  const averageRating = reviews.length ? reviews.reduce((sum, r) => sum + r.overall_rating, 0) / reviews.length : null;
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       {property.photos[0] && (
@@ -56,6 +73,12 @@ export function PropertyDetail() {
           <p className="text-slate-500">
             {property.city}, {property.state} {property.zip}
           </p>
+          {landlord && (
+            <div className="mt-1 flex items-center gap-2 text-sm">
+              {isVerifiedLandlord(landlord) && <Badge tone="success">✓ Verified Landlord</Badge>}
+              {averageRating !== null && <span className="text-slate-500">⭐ {averageRating.toFixed(1)} ({reviews.length} review{reviews.length === 1 ? "" : "s"})</span>}
+            </div>
+          )}
         </div>
         <p className="text-2xl font-bold text-slate-900">${property.rent.toLocaleString()}/mo</p>
       </div>
@@ -65,6 +88,7 @@ export function PropertyDetail() {
         <Badge>{property.baths} ba</Badge>
         <Badge>{property.sqft ? `${property.sqft} sqft` : "—"}</Badge>
         <Badge tone="brand">Available {property.available_date}</Badge>
+        <Badge>{property.lease_term_months}-month lease</Badge>
         <Badge>{property.pet_policy.replaceAll("_", " ")}</Badge>
       </div>
 
@@ -86,12 +110,15 @@ export function PropertyDetail() {
       </Card>
 
       {user?.role === "tenant" && (
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Button onClick={handleApply} disabled={applied}>
-            {applied ? `Application ${status}` : "Apply now"}
+            {applied ? `Application ${status}` : "Apply With My Passport"}
           </Button>
           <Button variant="secondary" onClick={handleMessage}>
             Message landlord
+          </Button>
+          <Button variant="secondary" onClick={handleInterested}>
+            {interested ? "✓ You're interested" : "I'm Interested"}
           </Button>
         </div>
       )}

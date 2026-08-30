@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { Badge, VerificationBadge } from "@/components/ui/Badge";
+import { Badge, RentalReadyBadge, VerificationBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { Application, ApplicationStatus, PropertyWithPhotos, TenantSummary } from "@/types/domain";
+import { computeRentalReady, type Application, type ApplicationStatus, type PropertyWithPhotos, type TenantSummary } from "@/types/domain";
 
 const STATUS_TONE: Record<ApplicationStatus, "default" | "brand" | "success" | "warning"> = {
   submitted: "brand",
@@ -51,13 +51,16 @@ export function LandlordApplicants() {
 
       <div className="mt-6 space-y-4">
         {rows.length === 0 && <p className="text-sm text-slate-500">No applicants yet.</p>}
-        {rows.map(({ application, tenant }) => (
+        {rows.map(({ application, tenant }) => {
+          const rentalReady = computeRentalReady(tenant.verification);
+          return (
           <Card key={application.id} className="p-4">
             <div className="flex items-start justify-between">
               <div>
                 <p className="font-medium text-slate-900">{tenant.user.email}</p>
                 <p className="mt-1 text-sm text-slate-600">{tenant.tenant.intro_text || "No intro provided."}</p>
                 <p className="mt-1 text-xs text-slate-400">Household size: {tenant.tenant.household_size}</p>
+                <div className="mt-2"><RentalReadyBadge level={rentalReady.level} /></div>
               </div>
               <Badge tone={STATUS_TONE[application.status]}>{application.status}</Badge>
             </div>
@@ -65,6 +68,7 @@ export function LandlordApplicants() {
             <div className="mt-3 flex flex-wrap gap-2">
               <VerificationBadge status={tenant.verification.identity} />
               <VerificationBadge status={tenant.verification.income} />
+              <VerificationBadge status={tenant.verification.employment} />
               <VerificationBadge status={tenant.verification.credit} />
               <VerificationBadge status={tenant.verification.background} />
               <VerificationBadge status={tenant.verification.eviction} />
@@ -86,7 +90,8 @@ export function LandlordApplicants() {
               </button>
             </div>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

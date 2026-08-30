@@ -11,8 +11,11 @@ export interface User {
   email: string;
   role: Role;
   phone: string | null;
+  is_admin: boolean;
   created_at: string;
 }
+
+export type PassportVisibility = "marketplace" | "applied_or_saved_only" | "private";
 
 export interface Tenant {
   user_id: string;
@@ -20,6 +23,7 @@ export interface Tenant {
   photo_url: string | null;
   household_size: number;
   lease_pref_months: number | null;
+  passport_visibility: PassportVisibility;
 }
 
 export type PropertyType = "apartment" | "house" | "condo" | "townhouse" | "studio";
@@ -33,6 +37,8 @@ export interface TenantPreferences {
   property_types: PropertyType[];
   move_in_date: string;
   pets: boolean;
+  parking_required: boolean;
+  desired_amenities: string[];
 }
 
 export interface TenantArea {
@@ -128,7 +134,14 @@ export interface Landlord {
   user_id: string;
   company_name: string | null;
   subscription_tier: SubscriptionTier;
+  identity_verified: boolean;
+  contact_verified: boolean;
+  business_verified: boolean;
+  verified_at: string | null;
 }
+
+export const isVerifiedLandlord = (l: Pick<Landlord, "identity_verified" | "contact_verified" | "business_verified">): boolean =>
+  l.identity_verified && l.contact_verified && l.business_verified;
 
 export type PropertyStatus = "draft" | "active" | "paused" | "leased";
 
@@ -148,11 +161,16 @@ export interface Property {
   sqft: number | null;
   type: PropertyType;
   available_date: string;
+  lease_term_months: number;
   pet_policy: "no_pets" | "cats_only" | "dogs_only" | "cats_and_dogs" | "case_by_case";
   amenities: string[];
   description: string;
   status: PropertyStatus;
   created_at: string;
+}
+
+export function propertyHasParking(property: Pick<Property, "amenities">): boolean {
+  return property.amenities.some((a) => /parking|garage/i.test(a));
 }
 
 export interface PropertyPhoto {
@@ -257,6 +275,129 @@ export interface Dispute {
   created_at: string;
 }
 
+// ---------- Perfect Tennant Passport™ / two-sided marketplace ----------
+
+export type InvitationStatus = "sent" | "accepted" | "declined";
+
+export interface TenantInvitation {
+  id: string;
+  landlord_id: string;
+  tenant_id: string;
+  property_id: string;
+  status: InvitationStatus;
+  message: string | null;
+  created_at: string;
+  responded_at: string | null;
+}
+
+export interface TenantInterest {
+  tenant_id: string;
+  property_id: string;
+  created_at: string;
+}
+
+export interface PassportShare {
+  id: string;
+  tenant_id: string;
+  landlord_id: string | null;
+  share_token: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface PassportView {
+  id: string;
+  tenant_id: string;
+  viewer_landlord_id: string;
+  viewed_at: string;
+}
+
+export interface LandlordReview {
+  id: string;
+  landlord_id: string;
+  tenant_id: string;
+  property_id: string | null;
+  communication_rating: number;
+  maintenance_rating: number;
+  accuracy_rating: number;
+  professionalism_rating: number;
+  move_in_rating: number;
+  overall_rating: number;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface SubscriptionPlan {
+  tier: SubscriptionTier;
+  name: string;
+  price_cents: number;
+  billing_period: string;
+  features: string[];
+  active: boolean;
+  updated_at: string;
+}
+
+// "Rental Ready" is never stored — it's always derived from the current
+// verification statuses below, the same list the Passport / Verification
+// Center display. Keeping it derived (not a cached column) means it can
+// never drift from the underlying verification data.
+export type RentalReadyLevel = "rental_ready" | "almost_ready" | "action_required";
+
+export interface RentalReadyResult {
+  level: RentalReadyLevel;
+  completed: number;
+  total: number;
+  nextStep: string | null;
+}
+
+export const REQUIRED_VERIFICATIONS: { key: keyof TenantVerificationSummary; label: string }[] = [
+  { key: "identity", label: "identity verification" },
+  { key: "income", label: "income verification" },
+  { key: "employment", label: "employment verification" },
+  { key: "rentalHistory", label: "rental history verification" },
+  { key: "credit", label: "credit screening" },
+  { key: "background", label: "background screening" },
+  { key: "eviction", label: "eviction search" },
+  { key: "references", label: "references" },
+];
+
+export interface TenantVerificationSummary {
+  identity: VerificationStatus;
+  income: VerificationStatus;
+  employment: VerificationStatus;
+  rentalHistory: VerificationStatus;
+  credit: VerificationStatus;
+  background: VerificationStatus;
+  eviction: VerificationStatus;
+  references: VerificationStatus;
+}
+
+export function computeRentalReady(v: TenantVerificationSummary): RentalReadyResult {
+  const total = REQUIRED_VERIFICATIONS.length;
+  const completed = REQUIRED_VERIFICATIONS.filter((r) => v[r.key] === "verified").length;
+  const failedOrExpired = REQUIRED_VERIFICATIONS.find((r) => v[r.key] === "failed" || v[r.key] === "expired");
+  const nextIncomplete = REQUIRED_VERIFICATIONS.find((r) => v[r.key] !== "verified");
+
+  if (completed === total) {
+    return { level: "rental_ready", completed, total, nextStep: null };
+  }
+  if (failedOrExpired) {
+    return {
+      level: "action_required",
+      completed,
+      total,
+      nextStep: `Resolve your ${failedOrExpired.label} to continue toward Rental Ready.`,
+    };
+  }
+  return {
+    level: "almost_ready",
+    completed,
+    total,
+    nextStep: nextIncomplete ? `Complete ${nextIncomplete.label} to become Rental Ready.` : null,
+  };
+}
+
 // Composite view types used by the UI (never expose verification base tables
 // directly to a landlord-facing client — this is the shape the "safe view"
 // RLS policies in the migration are designed to produce).
@@ -265,13 +406,30 @@ export interface TenantSummary {
   user: Pick<User, "id" | "email">;
   preferences: TenantPreferences;
   areas: TenantArea[];
-  verification: {
-    identity: VerificationStatus;
-    income: VerificationStatus;
-    credit: VerificationStatus;
-    background: VerificationStatus;
-    eviction: VerificationStatus;
-  };
+  verification: TenantVerificationSummary;
+}
+
+// The tenant's own Verification Center / Passport needs the full detail
+// (provider, dates) behind each status — never exposed to landlords, who
+// only ever see TenantVerificationSummary's bare statuses via the
+// tenant_public_profile view. RLS on the underlying tables (tenant_id =
+// auth.uid() only) is what actually enforces that, not this type.
+export interface VerificationDetail {
+  status: VerificationStatus;
+  provider: string | null;
+  verified_at: string | null;
+  expires_at: string | null;
+}
+
+export interface TenantVerificationDetails {
+  identity: VerificationDetail;
+  income: VerificationDetail & { monthly_income_range: string | null };
+  employment: VerificationDetail & { employer: string | null; title: string | null };
+  credit: VerificationDetail;
+  background: VerificationDetail;
+  eviction: VerificationDetail;
+  rentalHistory: RentalHistoryEntry[];
+  references: TenantReference[];
 }
 
 export interface PropertyWithPhotos extends Property {

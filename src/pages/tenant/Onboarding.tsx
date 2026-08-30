@@ -5,9 +5,14 @@ import * as api from "@/lib/data/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FormRow, Input, Select } from "@/components/ui/Field";
-import type { PropertyType, TenantSummary } from "@/types/domain";
+import type { PassportVisibility, PropertyType, TenantSummary } from "@/types/domain";
 
 const PROPERTY_TYPES: PropertyType[] = ["apartment", "house", "condo", "townhouse", "studio"];
+const VISIBILITY_OPTIONS: { value: PassportVisibility; label: string }[] = [
+  { value: "marketplace", label: "Landlords in the Tenant Marketplace (recommended)" },
+  { value: "applied_or_saved_only", label: "Only landlords I apply to or who save me" },
+  { value: "private", label: "No one — I'll share my Passport manually" },
+];
 
 export function TenantOnboarding() {
   const { user } = useAuth();
@@ -23,6 +28,10 @@ export function TenantOnboarding() {
   const [baths, setBaths] = useState(1);
   const [moveInDate, setMoveInDate] = useState("");
   const [pets, setPets] = useState(false);
+  const [parkingRequired, setParkingRequired] = useState(false);
+  const [desiredAmenities, setDesiredAmenities] = useState("");
+  const [leasePrefMonths, setLeasePrefMonths] = useState(12);
+  const [visibility, setVisibility] = useState<PassportVisibility>("marketplace");
   const [types, setTypes] = useState<PropertyType[]>(["apartment"]);
   const [city, setCity] = useState("");
   const [zip, setZip] = useState("");
@@ -41,6 +50,10 @@ export function TenantOnboarding() {
       setBaths(s.preferences.baths);
       setMoveInDate(s.preferences.move_in_date);
       setPets(s.preferences.pets);
+      setParkingRequired(s.preferences.parking_required);
+      setDesiredAmenities(s.preferences.desired_amenities.join(", "));
+      setLeasePrefMonths(s.tenant.lease_pref_months ?? 12);
+      setVisibility(s.tenant.passport_visibility);
       setTypes(s.preferences.property_types);
       if (s.areas[0]) {
         setCity(s.areas[0].city);
@@ -59,7 +72,12 @@ export function TenantOnboarding() {
     if (!user) return;
     setSaving(true);
     try {
-      await api.updateTenantProfile(user.id, { intro_text: introText, household_size: householdSize });
+      await api.updateTenantProfile(user.id, {
+        intro_text: introText,
+        household_size: householdSize,
+        lease_pref_months: leasePrefMonths,
+        passport_visibility: visibility,
+      });
       await api.updateTenantPreferences(user.id, {
         min_rent: minRent,
         max_rent: maxRent,
@@ -67,6 +85,8 @@ export function TenantOnboarding() {
         baths,
         move_in_date: moveInDate,
         pets,
+        parking_required: parkingRequired,
+        desired_amenities: desiredAmenities.split(",").map((a) => a.trim()).filter(Boolean),
         property_types: types,
       });
       if (city && zip) {
@@ -144,10 +164,37 @@ export function TenantOnboarding() {
             </div>
           </FormRow>
 
-          <FormRow label="Have pets?">
-            <Select value={pets ? "yes" : "no"} onChange={(e) => setPets(e.target.value === "yes")}>
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
+          <div className="grid grid-cols-2 gap-4">
+            <FormRow label="Have pets?">
+              <Select value={pets ? "yes" : "no"} onChange={(e) => setPets(e.target.value === "yes")}>
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </Select>
+            </FormRow>
+            <FormRow label="Need parking?">
+              <Select value={parkingRequired ? "yes" : "no"} onChange={(e) => setParkingRequired(e.target.value === "yes")}>
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </Select>
+            </FormRow>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormRow label="Desired amenities (comma separated)">
+              <Input value={desiredAmenities} onChange={(e) => setDesiredAmenities(e.target.value)} placeholder="e.g. in-unit laundry, gym" />
+            </FormRow>
+            <FormRow label="Lease length preference (months)">
+              <Input type="number" min={1} value={leasePrefMonths} onChange={(e) => setLeasePrefMonths(Number(e.target.value))} />
+            </FormRow>
+          </div>
+
+          <FormRow label="Who can see my Perfect Tennant Passport?">
+            <Select value={visibility} onChange={(e) => setVisibility(e.target.value as PassportVisibility)}>
+              {VISIBILITY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </Select>
           </FormRow>
 

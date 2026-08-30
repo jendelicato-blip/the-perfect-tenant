@@ -1,7 +1,9 @@
 import { Route, Routes } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { RequireRole } from "@/components/RequireRole";
+import { RequireAdmin } from "@/components/RequireAdmin";
 import { Landing } from "@/pages/Landing";
+import { ForLandlords } from "@/pages/ForLandlords";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
 import { ConversationList, ConversationThread } from "@/pages/Messages";
@@ -11,12 +13,18 @@ import { TenantMatches } from "@/pages/tenant/Matches";
 import { PropertyDetail } from "@/pages/tenant/PropertyDetail";
 import { TenantApplications } from "@/pages/tenant/Applications";
 import { TenantSaved } from "@/pages/tenant/Saved";
-import { TenantProfile } from "@/pages/tenant/Profile";
+import { TenantPassport } from "@/pages/tenant/Passport";
+import { TenantVerificationCenter } from "@/pages/tenant/VerificationCenter";
+import { TenantInvitations } from "@/pages/tenant/Invitations";
 import { LandlordDashboard } from "@/pages/landlord/Dashboard";
 import { LandlordPropertyForm } from "@/pages/landlord/PropertyForm";
 import { LandlordApplicants } from "@/pages/landlord/Applicants";
 import { LandlordSavedTenants } from "@/pages/landlord/SavedTenants";
 import { LandlordPricing } from "@/pages/landlord/Pricing";
+import { LandlordMarketplace } from "@/pages/landlord/Marketplace";
+import { LandlordTenantPassportView } from "@/pages/landlord/TenantPassportView";
+import { LandlordInterests } from "@/pages/landlord/Interests";
+import { AdminDashboard } from "@/pages/admin/Admin";
 
 function App() {
   return (
@@ -24,6 +32,7 @@ function App() {
       <Navbar />
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/for-landlords" element={<ForLandlords />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
 
@@ -64,6 +73,14 @@ function App() {
           }
         />
         <Route
+          path="/invitations"
+          element={
+            <RequireRole role="tenant">
+              <TenantInvitations />
+            </RequireRole>
+          }
+        />
+        <Route
           path="/saved"
           element={
             <RequireRole role="tenant">
@@ -72,10 +89,18 @@ function App() {
           }
         />
         <Route
-          path="/profile"
+          path="/passport"
           element={
             <RequireRole role="tenant">
-              <TenantProfile />
+              <TenantPassport />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/verification"
+          element={
+            <RequireRole role="tenant">
+              <TenantVerificationCenter />
             </RequireRole>
           }
         />
@@ -121,11 +146,44 @@ function App() {
           }
         />
         <Route
+          path="/landlord/marketplace"
+          element={
+            <RequireRole role="landlord">
+              <LandlordMarketplace />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/landlord/interests"
+          element={
+            <RequireRole role="landlord">
+              <LandlordInterests />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/landlord/tenants/:tenantId"
+          element={
+            <RequireRole role="landlord">
+              <LandlordTenantPassportView />
+            </RequireRole>
+          }
+        />
+        <Route
           path="/pricing"
           element={
             <RequireRole role="landlord">
               <LandlordPricing />
             </RequireRole>
+          }
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <AdminDashboard />
+            </RequireAdmin>
           }
         />
       </Routes>

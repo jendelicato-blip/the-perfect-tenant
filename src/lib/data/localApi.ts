@@ -1,34 +1,53 @@
 // Data-access facade used by every page/component. Phase 1 runs entirely
 // against the local dev-mode store (localStorage, seeded from src/data/seed)
 // so the app is fully clickable with zero backend setup. Every function here
-// is shaped 1:1 against supabase/migrations/0001_init.sql — wiring a live
-// Supabase project means replacing each function body with the equivalent
-// `supabase.from(...)` call, with no changes required in pages/components.
-// See docs/ARCHITECTURE.md.
+// is shaped 1:1 against the SQL schema in supabase/migrations/ — wiring a
+// live Supabase project means using supabaseApi.ts instead (see api.ts),
+// with no changes required in pages/components. See docs/ARCHITECTURE.md.
 
 import type {
   Application,
   ApplicationStatus,
   Conversation,
+  InvitationStatus,
+  LandlordReview,
   Message,
+  Notification,
+  PassportShare,
+  PassportView,
   Property,
   PropertyWithPhotos,
   Role,
+  SubscriptionPlan,
   SubscriptionTier,
   Tenant,
   TenantArea,
+  TenantInterest,
+  TenantInvitation,
   TenantPreferences,
   TenantSummary,
   User,
 } from "@/types/domain";
 import { getDb, mutate, newId } from "./localStore";
 import { scoreMatch } from "@/lib/match/score";
-import { ApiError, type AuthUser, type NewProperty, type PropertyFilter, type ScoredProperty } from "./types";
+import {
+  ApiError,
+  type AuthUser,
+  type MarketplaceTenant,
+  type NewLandlordReview,
+  type NewProperty,
+  type PropertyFilter,
+  type ScoredProperty,
+} from "./types";
 
 export { ApiError };
 
 function delay<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+}
+
+function notify(db: ReturnType<typeof getDb>, userId: string, type: string, body: string) {
+  db.notifications.push({ id: newId("notif"), user_id: userId, type, body, created_at: new Date().toISOString(), read_at: null });
 }
 
 // ---------- Auth ----------
@@ -39,25 +58,29 @@ export async function signUp(email: string, password: string, role: Role): Promi
       throw new ApiError("An account with that email already exists.");
     }
     const id = newId("u");
-    const user: User = { id, email, role, phone: null, created_at: new Date().toISOString() };
+    const user: User = { id, email, role, phone: null, is_admin: false, created_at: new Date().toISOString() };
     db.users.push(user);
     db.passwords[email] = password;
 
     if (role === "tenant") {
-      db.tenants.push({ user_id: id, intro_text: null, photo_url: null, household_size: 1, lease_pref_months: 12 });
-      db.tenantPreferences.push({ tenant_id: id, min_rent: 0, max_rent: 3000, beds: 1, baths: 1, property_types: ["apartment"], move_in_date: new Date().toISOString().slice(0, 10), pets: false });
+      db.tenants.push({ user_id: id, intro_text: null, photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace" });
+      db.tenantPreferences.push({
+        tenant_id: id, min_rent: 0, max_rent: 3000, beds: 1, baths: 1, property_types: ["apartment"],
+        move_in_date: new Date().toISOString().slice(0, 10), pets: false, parking_required: false, desired_amenities: [],
+      });
       db.identityVerification.push({ tenant_id: id, status: "not_started", provider: null, verified_at: null, expires_at: null });
       db.incomeVerification.push({ tenant_id: id, monthly_income_range: null, status: "not_started", provider: null, verified_at: null, expires_at: null });
+      db.employment.push({ tenant_id: id, employer: null, title: null, status: "not_started", provider: null, verified_at: null, expires_at: null });
       db.creditScreenings.push({ tenant_id: id, status: "not_started", provider: null, report_ref: null, completed_at: null, expires_at: null });
       db.backgroundScreenings.push({ tenant_id: id, status: "not_started", provider: null, report_ref: null, completed_at: null });
       db.evictionScreenings.push({ tenant_id: id, status: "not_started", provider: null, completed_at: null });
     } else {
-      db.landlords.push({ user_id: id, company_name: null, subscription_tier: "starter" });
+      db.landlords.push({ user_id: id, company_name: null, subscription_tier: "starter", identity_verified: false, contact_verified: false, business_verified: false, verified_at: null });
       db.subscriptions.push({ landlord_id: id, tier: "starter", stripe_customer_id: null, status: "trialing", renews_at: null });
     }
 
     db.currentUserId = id;
-    return { id, email, role };
+    return { id, email, role, is_admin: false };
   });
 }
 
@@ -68,7 +91,7 @@ export async function signIn(email: string, password: string): Promise<AuthUser>
       throw new ApiError("Invalid email or password.");
     }
     db.currentUserId = user.id;
-    return { id: user.id, email: user.email, role: user.role };
+    return { id: user.id, email: user.email, role: user.role, is_admin: user.is_admin };
   });
 }
 
@@ -83,18 +106,19 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!db.currentUserId) return null;
   const user = db.users.find((u) => u.id === db.currentUserId);
   if (!user) return null;
-  return { id: user.id, email: user.email, role: user.role };
+  return { id: user.id, email: user.email, role: user.role, is_admin: user.is_admin };
 }
 
 // ---------- Tenant profile ----------
 
-export async function getTenantSummary(tenantId: string): Promise<TenantSummary | null> {
-  const db = getDb();
+function buildTenantSummary(db: ReturnType<typeof getDb>, tenantId: string): TenantSummary | null {
   const tenant = db.tenants.find((t) => t.user_id === tenantId);
   const user = db.users.find((u) => u.id === tenantId);
   const preferences = db.tenantPreferences.find((p) => p.tenant_id === tenantId);
   if (!tenant || !user || !preferences) return null;
   const areas = db.tenantAreas.filter((a) => a.tenant_id === tenantId);
+  const hasVerifiedRentalHistory = db.rentalHistory.some((r) => r.tenant_id === tenantId && r.status === "verified");
+  const hasVerifiedReference = db.tenantReferences.some((r) => r.tenant_id === tenantId && r.status === "verified");
   return {
     tenant,
     user: { id: user.id, email: user.email },
@@ -103,10 +127,38 @@ export async function getTenantSummary(tenantId: string): Promise<TenantSummary 
     verification: {
       identity: db.identityVerification.find((v) => v.tenant_id === tenantId)?.status ?? "not_started",
       income: db.incomeVerification.find((v) => v.tenant_id === tenantId)?.status ?? "not_started",
+      employment: db.employment.find((v) => v.tenant_id === tenantId)?.status ?? "not_started",
+      rentalHistory: hasVerifiedRentalHistory ? "verified" : "not_started",
       credit: db.creditScreenings.find((v) => v.tenant_id === tenantId)?.status ?? "not_started",
       background: db.backgroundScreenings.find((v) => v.tenant_id === tenantId)?.status ?? "not_started",
       eviction: db.evictionScreenings.find((v) => v.tenant_id === tenantId)?.status ?? "not_started",
+      references: hasVerifiedReference ? "verified" : "not_started",
     },
+  };
+}
+
+export async function getTenantSummary(tenantId: string): Promise<TenantSummary | null> {
+  return buildTenantSummary(getDb(), tenantId);
+}
+
+export async function getTenantVerificationDetails(tenantId: string): Promise<import("@/types/domain").TenantVerificationDetails | null> {
+  const db = getDb();
+  if (!db.tenants.some((t) => t.user_id === tenantId)) return null;
+  const identity = db.identityVerification.find((v) => v.tenant_id === tenantId);
+  const income = db.incomeVerification.find((v) => v.tenant_id === tenantId);
+  const employment = db.employment.find((v) => v.tenant_id === tenantId);
+  const credit = db.creditScreenings.find((v) => v.tenant_id === tenantId);
+  const background = db.backgroundScreenings.find((v) => v.tenant_id === tenantId);
+  const eviction = db.evictionScreenings.find((v) => v.tenant_id === tenantId);
+  return {
+    identity: { status: identity?.status ?? "not_started", provider: identity?.provider ?? null, verified_at: identity?.verified_at ?? null, expires_at: identity?.expires_at ?? null },
+    income: { status: income?.status ?? "not_started", provider: income?.provider ?? null, verified_at: income?.verified_at ?? null, expires_at: income?.expires_at ?? null, monthly_income_range: income?.monthly_income_range ?? null },
+    employment: { status: employment?.status ?? "not_started", provider: employment?.provider ?? null, verified_at: employment?.verified_at ?? null, expires_at: employment?.expires_at ?? null, employer: employment?.employer ?? null, title: employment?.title ?? null },
+    credit: { status: credit?.status ?? "not_started", provider: credit?.provider ?? null, verified_at: credit?.completed_at ?? null, expires_at: credit?.expires_at ?? null },
+    background: { status: background?.status ?? "not_started", provider: background?.provider ?? null, verified_at: background?.completed_at ?? null, expires_at: null },
+    eviction: { status: eviction?.status ?? "not_started", provider: eviction?.provider ?? null, verified_at: eviction?.completed_at ?? null, expires_at: null },
+    rentalHistory: db.rentalHistory.filter((r) => r.tenant_id === tenantId),
+    references: db.tenantReferences.filter((r) => r.tenant_id === tenantId),
   };
 }
 
@@ -218,20 +270,59 @@ export async function addPropertyPhoto(propertyId: string, url: string): Promise
   });
 }
 
-// ---------- Matching ----------
+// ---------- Perfect Match™ ----------
 
 export async function getMatchesForTenant(tenantId: string): Promise<ScoredProperty[]> {
   const db = getDb();
+  const tenant = db.tenants.find((t) => t.user_id === tenantId);
   const prefs = db.tenantPreferences.find((p) => p.tenant_id === tenantId);
   const areas = db.tenantAreas.filter((a) => a.tenant_id === tenantId);
-  if (!prefs) return [];
+  if (!prefs || !tenant) return [];
   const active = db.properties.filter((p) => p.status === "active");
   const scored = active.map((property) => {
-    const { score, reasons } = scoreMatch(prefs, areas, property);
+    const { score, reasons } = scoreMatch(tenant, prefs, areas, property);
     return { property: withPhotos(db, property), score, reasons };
   });
   scored.sort((a, b) => b.score - a.score);
   return delay(scored);
+}
+
+// ---------- Tenant Marketplace (landlord → tenant discovery) ----------
+
+export async function listMarketplaceTenants(landlordId: string, propertyId?: string): Promise<MarketplaceTenant[]> {
+  const db = getDb();
+  const property = propertyId ? db.properties.find((p) => p.id === propertyId) : null;
+
+  function visibleToLandlord(tenantId: string): boolean {
+    const tenant = db.tenants.find((t) => t.user_id === tenantId);
+    if (!tenant) return false;
+    if (tenant.passport_visibility === "marketplace") return true;
+    if (tenant.passport_visibility === "private") return false;
+    const hasApplication = db.applications.some(
+      (a) => a.tenant_id === tenantId && db.properties.find((p) => p.id === a.property_id)?.landlord_id === landlordId,
+    );
+    const isSaved = db.savedTenants.some((s) => s.tenant_id === tenantId && s.landlord_id === landlordId);
+    return hasApplication || isSaved;
+  }
+
+  const tenants = db.tenants
+    .filter((t) => visibleToLandlord(t.user_id))
+    .map((t) => buildTenantSummary(db, t.user_id))
+    .filter((s): s is TenantSummary => s !== null)
+    .filter((s) => {
+      const req = ["identity", "income", "employment", "rentalHistory", "credit", "background", "eviction", "references"] as const;
+      return req.every((k) => s.verification[k] === "verified");
+    });
+
+  const results: MarketplaceTenant[] = tenants.map((summary) => {
+    if (!property) return { tenant: summary, score: null, reasons: null };
+    const tenant = db.tenants.find((t) => t.user_id === summary.tenant.user_id)!;
+    const { score, reasons } = scoreMatch(tenant, summary.preferences, summary.areas, property);
+    return { tenant: summary, score, reasons };
+  });
+
+  results.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  return results;
 }
 
 // ---------- Applications ----------
@@ -264,6 +355,8 @@ export async function updateApplicationStatus(applicationId: string, status: App
     if (a) {
       a.status = status;
       a.updated_at = new Date().toISOString();
+      const property = db.properties.find((p) => p.id === a.property_id);
+      notify(db, a.tenant_id, "application_status", `Your application for ${property?.address ?? "a property"} is now "${status}".`);
     }
   });
 }
@@ -343,6 +436,153 @@ export async function listSavedTenants(landlordId: string): Promise<TenantSummar
   return summaries.filter((s): s is TenantSummary => s !== null);
 }
 
+// ---------- Tenant invitations ("Invite to Apply") ----------
+
+export async function createInvitation(landlordId: string, tenantId: string, propertyId: string, message?: string): Promise<TenantInvitation> {
+  return mutate((db) => {
+    const invitation: TenantInvitation = {
+      id: newId("inv"), landlord_id: landlordId, tenant_id: tenantId, property_id: propertyId,
+      status: "sent", message: message ?? null, created_at: new Date().toISOString(), responded_at: null,
+    };
+    db.tenantInvitations.push(invitation);
+    const property = db.properties.find((p) => p.id === propertyId);
+    notify(db, tenantId, "landlord_interest", `A landlord invited you to apply for ${property?.address ?? "a property"}.`);
+    return invitation;
+  });
+}
+
+export async function listInvitationsForTenant(tenantId: string): Promise<TenantInvitation[]> {
+  const db = getDb();
+  return db.tenantInvitations.filter((i) => i.tenant_id === tenantId);
+}
+
+export async function listInvitationsForLandlord(landlordId: string): Promise<TenantInvitation[]> {
+  const db = getDb();
+  return db.tenantInvitations.filter((i) => i.landlord_id === landlordId);
+}
+
+export async function respondToInvitation(invitationId: string, status: InvitationStatus): Promise<void> {
+  mutate((db) => {
+    const invitation = db.tenantInvitations.find((i) => i.id === invitationId);
+    if (invitation) {
+      invitation.status = status;
+      invitation.responded_at = new Date().toISOString();
+    }
+  });
+}
+
+// ---------- Tenant-initiated property interest ("I'm Interested") ----------
+
+export async function toggleTenantInterest(tenantId: string, propertyId: string): Promise<boolean> {
+  return mutate((db) => {
+    const idx = db.tenantInterests.findIndex((i) => i.tenant_id === tenantId && i.property_id === propertyId);
+    if (idx >= 0) {
+      db.tenantInterests.splice(idx, 1);
+      return false;
+    }
+    db.tenantInterests.push({ tenant_id: tenantId, property_id: propertyId, created_at: new Date().toISOString() });
+    const property = db.properties.find((p) => p.id === propertyId);
+    const tenant = db.users.find((u) => u.id === tenantId);
+    if (property) {
+      notify(db, property.landlord_id, "tenant_interest", `${tenant?.email ?? "A verified tenant"} is interested in ${property.address}.`);
+    }
+    return true;
+  });
+}
+
+export async function listInterestsForLandlord(landlordId: string): Promise<{ interest: TenantInterest; tenant: TenantSummary }[]> {
+  const db = getDb();
+  const propertyIds = new Set(db.properties.filter((p) => p.landlord_id === landlordId).map((p) => p.id));
+  const interests = db.tenantInterests.filter((i) => propertyIds.has(i.property_id));
+  const results = await Promise.all(
+    interests.map(async (interest) => {
+      const tenant = await getTenantSummary(interest.tenant_id);
+      return tenant ? { interest, tenant } : null;
+    }),
+  );
+  return results.filter((r): r is { interest: TenantInterest; tenant: TenantSummary } => r !== null);
+}
+
+// ---------- Passport sharing + view history ----------
+
+export async function createPassportShare(tenantId: string, landlordId: string | null): Promise<PassportShare> {
+  return mutate((db) => {
+    const share: PassportShare = {
+      id: newId("share"), tenant_id: tenantId, landlord_id: landlordId,
+      share_token: newId("token"), expires_at: null, revoked_at: null, created_at: new Date().toISOString(),
+    };
+    db.passportShares.push(share);
+    return share;
+  });
+}
+
+export async function listPassportShares(tenantId: string): Promise<PassportShare[]> {
+  const db = getDb();
+  return db.passportShares.filter((s) => s.tenant_id === tenantId);
+}
+
+export async function revokePassportShare(shareId: string): Promise<void> {
+  mutate((db) => {
+    const share = db.passportShares.find((s) => s.id === shareId);
+    if (share) share.revoked_at = new Date().toISOString();
+  });
+}
+
+export async function recordPassportView(tenantId: string, viewerLandlordId: string): Promise<void> {
+  mutate((db) => {
+    db.passportViews.push({ id: newId("view"), tenant_id: tenantId, viewer_landlord_id: viewerLandlordId, viewed_at: new Date().toISOString() });
+  });
+}
+
+export async function listPassportViews(tenantId: string): Promise<PassportView[]> {
+  const db = getDb();
+  return db.passportViews.filter((v) => v.tenant_id === tenantId).sort((a, b) => b.viewed_at.localeCompare(a.viewed_at));
+}
+
+// ---------- Landlord reviews ----------
+
+export async function createLandlordReview(input: NewLandlordReview): Promise<LandlordReview> {
+  return mutate((db) => {
+    const overall = (input.communication_rating + input.maintenance_rating + input.accuracy_rating + input.professionalism_rating + input.move_in_rating) / 5;
+    const review: LandlordReview = { ...input, id: newId("review"), overall_rating: Math.round(overall * 10) / 10, created_at: new Date().toISOString() };
+    db.landlordReviews.push(review);
+    return review;
+  });
+}
+
+export async function listLandlordReviews(landlordId: string): Promise<LandlordReview[]> {
+  const db = getDb();
+  return db.landlordReviews.filter((r) => r.landlord_id === landlordId);
+}
+
+// ---------- Subscription plans (admin-configurable pricing) ----------
+
+export async function listSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+  const db = getDb();
+  return db.subscriptionPlans.filter((p) => p.active);
+}
+
+export async function updateSubscriptionPlan(tier: SubscriptionTier, patch: Partial<SubscriptionPlan>): Promise<void> {
+  mutate((db) => {
+    const plan = db.subscriptionPlans.find((p) => p.tier === tier);
+    if (plan) Object.assign(plan, patch, { updated_at: new Date().toISOString() });
+  });
+}
+
+// ---------- Notifications ----------
+
+export async function listNotifications(userId: string): Promise<Notification[]> {
+  const db = getDb();
+  return db.notifications.filter((n) => n.user_id === userId).sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+export async function markNotificationRead(notificationId: string): Promise<void> {
+  mutate((db) => {
+    const n = db.notifications.find((x) => x.id === notificationId);
+    if (n) n.read_at = new Date().toISOString();
+  });
+}
+
 // ---------- Subscriptions ----------
 
 export async function getSubscription(landlordId: string) {
@@ -371,6 +611,33 @@ export async function listApplicantsForProperty(propertyId: string): Promise<{ a
     }),
   );
   return results.filter((r): r is { application: Application; tenant: TenantSummary } => r !== null);
+}
+
+// ---------- Admin ----------
+
+export async function getAdminMetrics() {
+  const db = getDb();
+  const tenantSummaries = db.tenants.map((t) => buildTenantSummary(db, t.user_id)).filter((s): s is TenantSummary => s !== null);
+  const rentalReadyCount = tenantSummaries.filter((s) => {
+    const req = ["identity", "income", "employment", "rentalHistory", "credit", "background", "eviction", "references"] as const;
+    return req.every((k) => s.verification[k] === "verified");
+  }).length;
+  const verifiedLandlords = db.landlords.filter((l) => l.identity_verified && l.contact_verified && l.business_verified).length;
+  const planByTier = new Map(db.subscriptionPlans.map((p) => [p.tier, p.price_cents]));
+  const mrrCents = db.subscriptions
+    .filter((s) => s.status === "active")
+    .reduce((sum, s) => sum + (planByTier.get(s.tier) ?? 0), 0);
+
+  return {
+    totalTenants: db.tenants.length,
+    rentalReadyTenants: rentalReadyCount,
+    totalLandlords: db.landlords.length,
+    verifiedLandlords,
+    totalProperties: db.properties.length,
+    totalApplications: db.applications.length,
+    passportShares: db.passportShares.length,
+    mrrCents,
+  };
 }
 
 // ---------- Users ----------

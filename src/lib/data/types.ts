@@ -4,7 +4,7 @@
 // it, so every page/component only ever depends on this file's types plus
 // api.ts's function signatures — never on which backend is active.
 
-import type { Property, PropertyType, Role, TenantMatch } from "@/types/domain";
+import type { LandlordReview, MatchReason, Property, PropertyType, Role, TenantMatch, TenantSummary } from "@/types/domain";
 
 export class ApiError extends Error {}
 
@@ -12,6 +12,7 @@ export interface AuthUser {
   id: string;
   email: string;
   role: Role;
+  is_admin: boolean;
 }
 
 export interface PropertyFilter {
@@ -38,3 +39,15 @@ export interface ScoredProperty {
 // isn't wired up (local dev-mode, or Stripe secrets not yet configured) — the
 // caller falls back to updating the tier directly for Phase 1 testing.
 export type StartCheckout = (landlordId: string, tier: import("@/types/domain").SubscriptionTier) => Promise<string | null>;
+
+// A Rental Ready tenant surfaced in the landlord-facing Tenant Marketplace.
+// score/reasons are present only when scored against a specific property.
+export interface MarketplaceTenant {
+  tenant: TenantSummary;
+  score: number | null;
+  reasons: MatchReason[] | null;
+}
+
+export type NewLandlordReview = Omit<LandlordReview, "id" | "created_at" | "overall_rating"> & {
+  overall_rating?: number;
+};

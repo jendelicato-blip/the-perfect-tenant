@@ -1,7 +1,7 @@
 // Supabase-backed implementation of the same facade as localApi.ts. Active
 // whenever VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are set (see api.ts).
-// Every query here maps directly onto supabase/migrations/0001_init.sql —
-// RLS policies on each table (and the tenant_public_profile view's own
+// Every query here maps directly onto supabase/migrations/*.sql — RLS
+// policies on each table (and the tenant_public_profile view's own
 // authorization WHERE clause) are what actually enforce access control; this
 // file just shapes requests/responses to match the domain types.
 
@@ -9,20 +9,37 @@ import type {
   Application,
   ApplicationStatus,
   Conversation,
+  InvitationStatus,
+  LandlordReview,
   Message,
+  Notification,
+  PassportShare,
+  PassportView,
   Property,
   PropertyWithPhotos,
   Role,
+  SubscriptionPlan,
   SubscriptionTier,
   Tenant,
   TenantArea,
+  TenantInterest,
+  TenantInvitation,
   TenantPreferences,
   TenantSummary,
+  TenantVerificationDetails,
   VerificationStatus,
 } from "@/types/domain";
 import { scoreMatch } from "@/lib/match/score";
 import { supabase } from "./supabaseClient";
-import { ApiError, type AuthUser, type NewProperty, type PropertyFilter, type ScoredProperty } from "./types";
+import {
+  ApiError,
+  type AuthUser,
+  type MarketplaceTenant,
+  type NewLandlordReview,
+  type NewProperty,
+  type PropertyFilter,
+  type ScoredProperty,
+} from "./types";
 
 export { ApiError };
 
@@ -34,6 +51,11 @@ function client() {
 function unwrap<T>(result: { data: T; error: { message: string } | null }): T {
   if (result.error) throw new ApiError(result.error.message);
   return result.data;
+}
+
+async function notify(userId: string, type: string, body: string): Promise<void> {
+  const db = client();
+  await db.from("notifications").insert({ user_id: userId, type, body });
 }
 
 // ---------- Auth ----------
@@ -64,6 +86,7 @@ export async function signUp(email: string, password: string, role: Role): Promi
     });
     await db.from("identity_verification").insert({ tenant_id: authUser.id });
     await db.from("income_verification").insert({ tenant_id: authUser.id });
+    await db.from("employment").insert({ tenant_id: authUser.id });
     await db.from("credit_screenings").insert({ tenant_id: authUser.id });
     await db.from("background_screenings").insert({ tenant_id: authUser.id });
     await db.from("eviction_screenings").insert({ tenant_id: authUser.id });
@@ -72,7 +95,7 @@ export async function signUp(email: string, password: string, role: Role): Promi
     await db.from("subscriptions").insert({ landlord_id: authUser.id, tier: "starter", status: "trialing" });
   }
 
-  return { id: authUser.id, email, role };
+  return { id: authUser.id, email, role, is_admin: false };
 }
 
 export async function signIn(email: string, password: string): Promise<AuthUser> {
@@ -81,7 +104,7 @@ export async function signIn(email: string, password: string): Promise<AuthUser>
   if (error) throw new ApiError(error.message);
   const { data: profile, error: profileError } = await db
     .from("users")
-    .select("id, email, role")
+    .select("id, email, role, is_admin")
     .eq("id", data.user.id)
     .single();
   if (profileError) throw new ApiError(profileError.message);
@@ -99,41 +122,89 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!data.session) return null;
   const { data: profile } = await db
     .from("users")
-    .select("id, email, role")
+    .select("id, email, role, is_admin")
     .eq("id", data.session.user.id)
     .single();
   return (profile as AuthUser) ?? null;
 }
 
 // ---------- Tenant profile ----------
+// getTenantSummary reads the tenant_public_profile view (status-only,
+// visibility-gated — see 0004_tenant_marketplace_visibility.sql) plus
+// tenant_areas. This is what both a tenant's own pages AND a landlord's
+// (Applicants, Saved Tenants, Marketplace) can safely call — the view's own
+// WHERE clause decides what's visible to the caller, not this function.
+
+function summaryFromProfileRow(row: Record<string, unknown>, areas: TenantArea[]): TenantSummary {
+  return {
+    tenant: {
+      user_id: row.tenant_id as string,
+      intro_text: (row.intro_text as string) ?? null,
+      photo_url: (row.photo_url as string) ?? null,
+      household_size: (row.household_size as number) ?? 1,
+      lease_pref_months: (row.lease_pref_months as number) ?? null,
+      passport_visibility: (row.passport_visibility as Tenant["passport_visibility"]) ?? "marketplace",
+    },
+    user: { id: row.tenant_id as string, email: row.email as string },
+    preferences: {
+      tenant_id: row.tenant_id as string,
+      min_rent: (row.min_rent as number) ?? 0,
+      max_rent: (row.max_rent as number) ?? 0,
+      beds: (row.beds as number) ?? 0,
+      baths: (row.baths as number) ?? 0,
+      property_types: (row.property_types as TenantPreferences["property_types"]) ?? [],
+      move_in_date: (row.move_in_date as string) ?? new Date().toISOString().slice(0, 10),
+      pets: Boolean(row.pets),
+      parking_required: Boolean(row.parking_required),
+      desired_amenities: (row.desired_amenities as string[]) ?? [],
+    },
+    areas,
+    verification: {
+      identity: row.identity_status as VerificationStatus,
+      income: row.income_status as VerificationStatus,
+      employment: row.employment_status as VerificationStatus,
+      rentalHistory: row.rental_history_verified ? "verified" : "not_started",
+      credit: row.credit_status as VerificationStatus,
+      background: row.background_status as VerificationStatus,
+      eviction: row.eviction_status as VerificationStatus,
+      references: row.references_verified ? "verified" : "not_started",
+    },
+  };
+}
 
 export async function getTenantSummary(tenantId: string): Promise<TenantSummary | null> {
   const db = client();
-  const { data: tenant } = await db.from("tenants").select("*").eq("user_id", tenantId).single();
-  if (!tenant) return null;
-  const { data: user } = await db.from("users").select("id, email").eq("id", tenantId).single();
-  const { data: preferences } = await db.from("tenant_preferences").select("*").eq("tenant_id", tenantId).single();
+  const { data: row } = await db.from("tenant_public_profile").select("*").eq("tenant_id", tenantId).maybeSingle();
+  if (!row) return null;
   const { data: areas } = await db.from("tenant_areas").select("*").eq("tenant_id", tenantId);
-  const [identity, income, credit, background, eviction] = await Promise.all([
-    db.from("identity_verification").select("status").eq("tenant_id", tenantId).single(),
-    db.from("income_verification").select("status").eq("tenant_id", tenantId).single(),
-    db.from("credit_screenings").select("status").eq("tenant_id", tenantId).single(),
-    db.from("background_screenings").select("status").eq("tenant_id", tenantId).single(),
-    db.from("eviction_screenings").select("status").eq("tenant_id", tenantId).single(),
+  return summaryFromProfileRow(row, (areas ?? []) as TenantArea[]);
+}
+
+export async function getTenantVerificationDetails(tenantId: string): Promise<TenantVerificationDetails | null> {
+  const db = client();
+  const [identity, income, employment, credit, background, eviction, rentalHistory, references] = await Promise.all([
+    db.from("identity_verification").select("*").eq("tenant_id", tenantId).maybeSingle(),
+    db.from("income_verification").select("*").eq("tenant_id", tenantId).maybeSingle(),
+    db.from("employment").select("*").eq("tenant_id", tenantId).maybeSingle(),
+    db.from("credit_screenings").select("*").eq("tenant_id", tenantId).maybeSingle(),
+    db.from("background_screenings").select("*").eq("tenant_id", tenantId).maybeSingle(),
+    db.from("eviction_screenings").select("*").eq("tenant_id", tenantId).maybeSingle(),
+    db.from("rental_history").select("*").eq("tenant_id", tenantId),
+    db.from("tenant_references").select("*").eq("tenant_id", tenantId),
   ]);
-  if (!user || !preferences) return null;
+  // RLS makes every one of these come back empty for anyone but the tenant
+  // themselves — if identity has no row and no error, there's nothing to show.
+  if (!identity.data && !income.data && !employment.data) return null;
+
   return {
-    tenant: tenant as Tenant,
-    user,
-    preferences: preferences as TenantPreferences,
-    areas: (areas ?? []) as TenantArea[],
-    verification: {
-      identity: (identity.data?.status ?? "not_started") as VerificationStatus,
-      income: (income.data?.status ?? "not_started") as VerificationStatus,
-      credit: (credit.data?.status ?? "not_started") as VerificationStatus,
-      background: (background.data?.status ?? "not_started") as VerificationStatus,
-      eviction: (eviction.data?.status ?? "not_started") as VerificationStatus,
-    },
+    identity: { status: identity.data?.status ?? "not_started", provider: identity.data?.provider ?? null, verified_at: identity.data?.verified_at ?? null, expires_at: identity.data?.expires_at ?? null },
+    income: { status: income.data?.status ?? "not_started", provider: income.data?.provider ?? null, verified_at: income.data?.verified_at ?? null, expires_at: income.data?.expires_at ?? null, monthly_income_range: income.data?.monthly_income_range ?? null },
+    employment: { status: employment.data?.status ?? "not_started", provider: employment.data?.provider ?? null, verified_at: employment.data?.verified_at ?? null, expires_at: employment.data?.expires_at ?? null, employer: employment.data?.employer ?? null, title: employment.data?.title ?? null },
+    credit: { status: credit.data?.status ?? "not_started", provider: credit.data?.provider ?? null, verified_at: credit.data?.completed_at ?? null, expires_at: credit.data?.expires_at ?? null },
+    background: { status: background.data?.status ?? "not_started", provider: background.data?.provider ?? null, verified_at: background.data?.completed_at ?? null, expires_at: null },
+    eviction: { status: eviction.data?.status ?? "not_started", provider: eviction.data?.provider ?? null, verified_at: eviction.data?.completed_at ?? null, expires_at: null },
+    rentalHistory: rentalHistory.data ?? [],
+    references: references.data ?? [],
   };
 }
 
@@ -254,7 +325,7 @@ export async function addPropertyPhoto(propertyId: string, url: string): Promise
   await db.from("property_photos").insert({ property_id: propertyId, url, sort_order: count ?? 0 });
 }
 
-// ---------- Matching ----------
+// ---------- Perfect Match™ ----------
 // Phase 1 computes match scores client-side against whatever active
 // properties the tenant's own RLS-scoped read returns, then (best-effort)
 // upserts them into tenant_matches for later analytics. If that persistence
@@ -263,13 +334,14 @@ export async function addPropertyPhoto(propertyId: string, url: string): Promise
 
 export async function getMatchesForTenant(tenantId: string): Promise<ScoredProperty[]> {
   const db = client();
+  const { data: tenant } = await db.from("tenants").select("*").eq("user_id", tenantId).single();
   const { data: prefs } = await db.from("tenant_preferences").select("*").eq("tenant_id", tenantId).single();
-  if (!prefs) return [];
+  if (!prefs || !tenant) return [];
   const { data: areas } = await db.from("tenant_areas").select("*").eq("tenant_id", tenantId);
   const properties = await listProperties();
 
   const scored = properties.map((property) => {
-    const { score, reasons } = scoreMatch(prefs as TenantPreferences, (areas ?? []) as TenantArea[], property);
+    const { score, reasons } = scoreMatch(tenant as Tenant, prefs as TenantPreferences, (areas ?? []) as TenantArea[], property);
     return { property, score, reasons };
   });
   scored.sort((a, b) => b.score - a.score);
@@ -281,6 +353,60 @@ export async function getMatchesForTenant(tenantId: string): Promise<ScoredPrope
     );
 
   return scored;
+}
+
+// ---------- Tenant Marketplace (landlord → tenant discovery) ----------
+
+export async function listMarketplaceTenants(_landlordId: string, propertyId?: string): Promise<MarketplaceTenant[]> {
+  const db = client();
+  // tenant_public_profile's own WHERE clause already scopes rows to those
+  // visible to the calling landlord (marketplace opt-in, or an existing
+  // application/saved relationship) — no extra filtering needed here.
+  const { data: rows, error } = await db.from("tenant_public_profile").select("*");
+  if (error) throw new ApiError(error.message);
+
+  const rentalReady = (rows ?? []).filter(
+    (r) =>
+      r.identity_status === "verified" &&
+      r.income_status === "verified" &&
+      r.employment_status === "verified" &&
+      r.rental_history_verified &&
+      r.credit_status === "verified" &&
+      r.background_status === "verified" &&
+      r.eviction_status === "verified" &&
+      r.references_verified,
+  );
+
+  const tenantIds = rentalReady.map((r) => r.tenant_id as string);
+  const { data: allAreas } = tenantIds.length
+    ? await db.from("tenant_areas").select("*").in("tenant_id", tenantIds)
+    : { data: [] as TenantArea[] };
+  const areasByTenant = new Map<string, TenantArea[]>();
+  for (const area of allAreas ?? []) {
+    const list = areasByTenant.get(area.tenant_id) ?? [];
+    list.push(area as TenantArea);
+    areasByTenant.set(area.tenant_id, list);
+  }
+
+  const property = propertyId ? await getProperty(propertyId) : null;
+  // lease_pref_months lives on `tenants`, not the profile view.
+  const { data: tenantRows } = tenantIds.length ? await db.from("tenants").select("user_id, lease_pref_months").in("user_id", tenantIds) : { data: [] };
+  const leaseByTenant = new Map((tenantRows ?? []).map((t) => [t.user_id as string, t.lease_pref_months as number | null]));
+
+  const results: MarketplaceTenant[] = rentalReady.map((row) => {
+    const summary = summaryFromProfileRow(row, areasByTenant.get(row.tenant_id as string) ?? []);
+    if (!property) return { tenant: summary, score: null, reasons: null };
+    const { score, reasons } = scoreMatch(
+      { lease_pref_months: leaseByTenant.get(row.tenant_id as string) ?? null },
+      summary.preferences,
+      summary.areas,
+      property,
+    );
+    return { tenant: summary, score, reasons };
+  });
+
+  results.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  return results;
 }
 
 // ---------- Applications ----------
@@ -315,7 +441,12 @@ export async function createApplication(tenantId: string, propertyId: string): P
 
 export async function updateApplicationStatus(applicationId: string, status: ApplicationStatus): Promise<void> {
   const db = client();
+  const { data: application } = await db.from("applications").select("*").eq("id", applicationId).single();
   unwrap(await db.from("applications").update({ status, updated_at: new Date().toISOString() }).eq("id", applicationId));
+  if (application) {
+    const { data: property } = await db.from("properties").select("address").eq("id", application.property_id).single();
+    await notify(application.tenant_id, "application_status", `Your application for ${property?.address ?? "a property"} is now "${status}".`);
+  }
 }
 
 // ---------- Messaging ----------
@@ -424,6 +555,160 @@ export async function listSavedTenants(landlordId: string): Promise<TenantSummar
   return summaries.filter((s): s is TenantSummary => s !== null);
 }
 
+// ---------- Tenant invitations ("Invite to Apply") ----------
+
+export async function createInvitation(landlordId: string, tenantId: string, propertyId: string, message?: string): Promise<TenantInvitation> {
+  const db = client();
+  const { data, error } = await db
+    .from("tenant_invitations")
+    .insert({ landlord_id: landlordId, tenant_id: tenantId, property_id: propertyId, message: message ?? null })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  const { data: property } = await db.from("properties").select("address").eq("id", propertyId).single();
+  await notify(tenantId, "landlord_interest", `A landlord invited you to apply for ${property?.address ?? "a property"}.`);
+  return data as TenantInvitation;
+}
+
+export async function listInvitationsForTenant(tenantId: string): Promise<TenantInvitation[]> {
+  const db = client();
+  const { data, error } = await db.from("tenant_invitations").select("*").eq("tenant_id", tenantId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as TenantInvitation[];
+}
+
+export async function listInvitationsForLandlord(landlordId: string): Promise<TenantInvitation[]> {
+  const db = client();
+  const { data, error } = await db.from("tenant_invitations").select("*").eq("landlord_id", landlordId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as TenantInvitation[];
+}
+
+export async function respondToInvitation(invitationId: string, status: InvitationStatus): Promise<void> {
+  const db = client();
+  await db.from("tenant_invitations").update({ status, responded_at: new Date().toISOString() }).eq("id", invitationId);
+}
+
+// ---------- Tenant-initiated property interest ("I'm Interested") ----------
+
+export async function toggleTenantInterest(tenantId: string, propertyId: string): Promise<boolean> {
+  const db = client();
+  const { data: existing } = await db
+    .from("tenant_interests")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("property_id", propertyId)
+    .maybeSingle();
+  if (existing) {
+    await db.from("tenant_interests").delete().eq("tenant_id", tenantId).eq("property_id", propertyId);
+    return false;
+  }
+  await db.from("tenant_interests").insert({ tenant_id: tenantId, property_id: propertyId });
+  const { data: property } = await db.from("properties").select("address, landlord_id").eq("id", propertyId).single();
+  if (property) {
+    await notify(property.landlord_id, "tenant_interest", `A verified tenant is interested in ${property.address}.`);
+  }
+  return true;
+}
+
+export async function listInterestsForLandlord(landlordId: string): Promise<{ interest: TenantInterest; tenant: TenantSummary }[]> {
+  const db = client();
+  const { data: properties } = await db.from("properties").select("id").eq("landlord_id", landlordId);
+  const propertyIds = (properties ?? []).map((p) => p.id);
+  if (propertyIds.length === 0) return [];
+  const { data: interests, error } = await db.from("tenant_interests").select("*").in("property_id", propertyIds);
+  if (error) throw new ApiError(error.message);
+  const results = await Promise.all(
+    (interests ?? []).map(async (interest) => {
+      const tenant = await getTenantSummary(interest.tenant_id);
+      return tenant ? { interest: interest as TenantInterest, tenant } : null;
+    }),
+  );
+  return results.filter((r): r is { interest: TenantInterest; tenant: TenantSummary } => r !== null);
+}
+
+// ---------- Passport sharing + view history ----------
+
+export async function createPassportShare(tenantId: string, landlordId: string | null): Promise<PassportShare> {
+  const db = client();
+  const { data, error } = await db.from("passport_shares").insert({ tenant_id: tenantId, landlord_id: landlordId }).select().single();
+  if (error) throw new ApiError(error.message);
+  return data as PassportShare;
+}
+
+export async function listPassportShares(tenantId: string): Promise<PassportShare[]> {
+  const db = client();
+  const { data, error } = await db.from("passport_shares").select("*").eq("tenant_id", tenantId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as PassportShare[];
+}
+
+export async function revokePassportShare(shareId: string): Promise<void> {
+  const db = client();
+  await db.from("passport_shares").update({ revoked_at: new Date().toISOString() }).eq("id", shareId);
+}
+
+export async function recordPassportView(tenantId: string, viewerLandlordId: string): Promise<void> {
+  const db = client();
+  await db.from("passport_views").insert({ tenant_id: tenantId, viewer_landlord_id: viewerLandlordId });
+}
+
+export async function listPassportViews(tenantId: string): Promise<PassportView[]> {
+  const db = client();
+  const { data, error } = await db.from("passport_views").select("*").eq("tenant_id", tenantId).order("viewed_at", { ascending: false });
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as PassportView[];
+}
+
+// ---------- Landlord reviews ----------
+
+export async function createLandlordReview(input: NewLandlordReview): Promise<LandlordReview> {
+  const db = client();
+  const overall = (input.communication_rating + input.maintenance_rating + input.accuracy_rating + input.professionalism_rating + input.move_in_rating) / 5;
+  const { data, error } = await db
+    .from("landlord_reviews")
+    .insert({ ...input, overall_rating: Math.round(overall * 10) / 10 })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  return data as LandlordReview;
+}
+
+export async function listLandlordReviews(landlordId: string): Promise<LandlordReview[]> {
+  const db = client();
+  const { data, error } = await db.from("landlord_reviews").select("*").eq("landlord_id", landlordId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as LandlordReview[];
+}
+
+// ---------- Subscription plans (admin-configurable pricing) ----------
+
+export async function listSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+  const db = client();
+  const { data, error } = await db.from("subscription_plans").select("*").eq("active", true);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as SubscriptionPlan[];
+}
+
+export async function updateSubscriptionPlan(tier: SubscriptionTier, patch: Partial<SubscriptionPlan>): Promise<void> {
+  const db = client();
+  unwrap(await db.from("subscription_plans").update({ ...patch, updated_at: new Date().toISOString() }).eq("tier", tier));
+}
+
+// ---------- Notifications ----------
+
+export async function listNotifications(userId: string): Promise<Notification[]> {
+  const db = client();
+  const { data, error } = await db.from("notifications").select("*").eq("user_id", userId).order("created_at", { ascending: false });
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as Notification[];
+}
+
+export async function markNotificationRead(notificationId: string): Promise<void> {
+  const db = client();
+  await db.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", notificationId);
+}
+
 // ---------- Subscriptions ----------
 
 export async function getSubscription(landlordId: string) {
@@ -453,6 +738,54 @@ export async function listApplicantsForProperty(
     }),
   );
   return results.filter((r): r is { application: Application; tenant: TenantSummary } => r !== null);
+}
+
+// ---------- Admin ----------
+// Reads here rely on RLS same as everywhere else — a non-admin caller simply
+// gets zero rows back from subscription_plans writes (blocked) and reduced
+// visibility on tables scoped to their own data, so this never needs a
+// separate "is this an admin" branch in application code.
+
+export async function getAdminMetrics() {
+  const db = client();
+  const [tenants, landlords, properties, applications, shares, plans, subscriptions] = await Promise.all([
+    db.from("tenants").select("user_id", { count: "exact", head: true }),
+    db.from("landlords").select("user_id, identity_verified, contact_verified, business_verified"),
+    db.from("properties").select("id", { count: "exact", head: true }),
+    db.from("applications").select("id", { count: "exact", head: true }),
+    db.from("passport_shares").select("id", { count: "exact", head: true }),
+    db.from("subscription_plans").select("tier, price_cents"),
+    db.from("subscriptions").select("tier, status"),
+  ]);
+
+  const { data: profileRows } = await db.from("tenant_public_profile").select("*");
+  const rentalReadyTenants = (profileRows ?? []).filter(
+    (r) =>
+      r.identity_status === "verified" &&
+      r.income_status === "verified" &&
+      r.employment_status === "verified" &&
+      r.rental_history_verified &&
+      r.credit_status === "verified" &&
+      r.background_status === "verified" &&
+      r.eviction_status === "verified" &&
+      r.references_verified,
+  ).length;
+
+  const priceByTier = new Map((plans.data ?? []).map((p) => [p.tier, p.price_cents]));
+  const mrrCents = (subscriptions.data ?? [])
+    .filter((s) => s.status === "active")
+    .reduce((sum, s) => sum + (priceByTier.get(s.tier) ?? 0), 0);
+
+  return {
+    totalTenants: tenants.count ?? 0,
+    rentalReadyTenants,
+    totalLandlords: (landlords.data ?? []).length,
+    verifiedLandlords: (landlords.data ?? []).filter((l) => l.identity_verified && l.contact_verified && l.business_verified).length,
+    totalProperties: properties.count ?? 0,
+    totalApplications: applications.count ?? 0,
+    passportShares: shares.count ?? 0,
+    mrrCents,
+  };
 }
 
 // ---------- Users ----------

@@ -1,22 +1,31 @@
 import type {
   Application,
+  BackgroundScreening,
   Conversation,
   CreditScreening,
-  BackgroundScreening,
+  Employment,
   EvictionScreening,
   IdentityVerification,
   IncomeVerification,
   Landlord,
+  LandlordReview,
   Message,
   Notification,
+  PassportShare,
+  PassportView,
   Property,
   PropertyPhoto,
+  RentalHistoryEntry,
   SavedProperty,
   SavedTenant,
   Subscription,
+  SubscriptionPlan,
   Tenant,
   TenantArea,
+  TenantInterest,
+  TenantInvitation,
   TenantPreferences,
+  TenantReference,
   User,
 } from "@/types/domain";
 import * as seed from "@/data/seed";
@@ -28,6 +37,9 @@ interface Db {
   tenantAreas: TenantArea[];
   identityVerification: IdentityVerification[];
   incomeVerification: IncomeVerification[];
+  employment: Employment[];
+  rentalHistory: RentalHistoryEntry[];
+  tenantReferences: TenantReference[];
   creditScreenings: CreditScreening[];
   backgroundScreenings: BackgroundScreening[];
   evictionScreenings: EvictionScreening[];
@@ -40,12 +52,18 @@ interface Db {
   savedProperties: SavedProperty[];
   savedTenants: SavedTenant[];
   subscriptions: Subscription[];
+  subscriptionPlans: SubscriptionPlan[];
+  tenantInvitations: TenantInvitation[];
+  tenantInterests: TenantInterest[];
+  passportShares: PassportShare[];
+  passportViews: PassportView[];
+  landlordReviews: LandlordReview[];
   notifications: Notification[];
   passwords: Record<string, string>;
   currentUserId: string | null;
 }
 
-const STORAGE_KEY = "tpt.devstore.v1";
+const STORAGE_KEY = "tpt.devstore.v2";
 
 function freshDb(): Db {
   return {
@@ -55,6 +73,9 @@ function freshDb(): Db {
     tenantAreas: [...seed.seedTenantAreas],
     identityVerification: [...seed.seedIdentityVerification],
     incomeVerification: [...seed.seedIncomeVerification],
+    employment: [...seed.seedEmployment],
+    rentalHistory: [...seed.seedRentalHistory],
+    tenantReferences: [...seed.seedTenantReferences],
     creditScreenings: [...seed.seedCreditScreenings],
     backgroundScreenings: [...seed.seedBackgroundScreenings],
     evictionScreenings: [...seed.seedEvictionScreenings],
@@ -67,6 +88,12 @@ function freshDb(): Db {
     savedProperties: [...seed.seedSavedProperties],
     savedTenants: [...seed.seedSavedTenants],
     subscriptions: [...seed.seedSubscriptions],
+    subscriptionPlans: [...seed.seedSubscriptionPlans],
+    tenantInvitations: [...seed.seedTenantInvitations],
+    tenantInterests: [...seed.seedTenantInterests],
+    passportShares: [...seed.seedPassportShares],
+    passportViews: [...seed.seedPassportViews],
+    landlordReviews: [...seed.seedLandlordReviews],
     notifications: [],
     passwords: { ...seed.seedPasswords },
     currentUserId: null,

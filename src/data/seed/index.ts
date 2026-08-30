@@ -1,44 +1,54 @@
 import type {
   Application,
+  BackgroundScreening,
   Conversation,
   CreditScreening,
-  BackgroundScreening,
+  Employment,
   EvictionScreening,
   IdentityVerification,
   IncomeVerification,
   Landlord,
+  LandlordReview,
   Message,
+  PassportShare,
+  PassportView,
   Property,
   PropertyPhoto,
+  RentalHistoryEntry,
   SavedProperty,
   SavedTenant,
   Subscription,
+  SubscriptionPlan,
   Tenant,
   TenantArea,
+  TenantInterest,
+  TenantInvitation,
   TenantPreferences,
+  TenantReference,
   User,
 } from "@/types/domain";
 
 // Seed data used by the local dev-mode data layer (no Supabase project
-// required to run the app). Shaped 1:1 against supabase/migrations/0001_init.sql
+// required to run the app). Shaped 1:1 against supabase/migrations/0001_*.sql
 // so switching VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY to a live project needs
-// no UI changes — only supabase/seed.sql needs to be loaded with equivalent rows.
+// no UI changes.
 
 export const seedUsers: User[] = [
-  { id: "u-tenant-1", email: "amara.tenant@example.com", role: "tenant", phone: "555-0101", created_at: "2026-06-01T00:00:00Z" },
-  { id: "u-tenant-2", email: "devon.tenant@example.com", role: "tenant", phone: "555-0102", created_at: "2026-06-02T00:00:00Z" },
-  { id: "u-landlord-1", email: "priya.landlord@example.com", role: "landlord", phone: "555-0201", created_at: "2026-05-15T00:00:00Z" },
-  { id: "u-landlord-2", email: "marcus.landlord@example.com", role: "landlord", phone: "555-0202", created_at: "2026-05-20T00:00:00Z" },
+  { id: "u-tenant-1", email: "amara.tenant@example.com", role: "tenant", phone: "555-0101", is_admin: false, created_at: "2026-06-01T00:00:00Z" },
+  { id: "u-tenant-2", email: "devon.tenant@example.com", role: "tenant", phone: "555-0102", is_admin: false, created_at: "2026-06-02T00:00:00Z" },
+  // Priya doubles as the demo admin account (Admin dashboard / plan editor).
+  { id: "u-landlord-1", email: "priya.landlord@example.com", role: "landlord", phone: "555-0201", is_admin: true, created_at: "2026-05-15T00:00:00Z" },
+  { id: "u-landlord-2", email: "marcus.landlord@example.com", role: "landlord", phone: "555-0202", is_admin: false, created_at: "2026-05-20T00:00:00Z" },
 ];
 
 export const seedTenants: Tenant[] = [
-  { user_id: "u-tenant-1", intro_text: "Quiet grad student, works remote, tidy and reliable.", photo_url: null, household_size: 1, lease_pref_months: 12 },
-  { user_id: "u-tenant-2", intro_text: "Small family of three, looking for a long-term home near good schools.", photo_url: null, household_size: 3, lease_pref_months: 24 },
+  { user_id: "u-tenant-1", intro_text: "Quiet grad student, works remote, tidy and reliable.", photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace" },
+  { user_id: "u-tenant-2", intro_text: "Small family of three, looking for a long-term home near good schools.", photo_url: null, household_size: 3, lease_pref_months: 24, passport_visibility: "marketplace" },
 ];
 
 export const seedTenantPreferences: TenantPreferences[] = [
-  { tenant_id: "u-tenant-1", min_rent: 1200, max_rent: 1800, beds: 1, baths: 1, property_types: ["apartment", "studio"], move_in_date: "2026-10-01", pets: false },
-  { tenant_id: "u-tenant-2", min_rent: 2000, max_rent: 2900, beds: 3, baths: 2, property_types: ["house", "townhouse"], move_in_date: "2026-11-15", pets: true },
+  { tenant_id: "u-tenant-1", min_rent: 1200, max_rent: 1800, beds: 1, baths: 1, property_types: ["apartment", "studio"], move_in_date: "2026-10-01", pets: false, parking_required: false, desired_amenities: ["in-unit laundry"] },
+  { tenant_id: "u-tenant-2", min_rent: 2000, max_rent: 2900, beds: 3, baths: 2, property_types: ["house", "townhouse"], move_in_date: "2026-11-15", pets: true, parking_required: true, desired_amenities: ["fenced yard", "garage"] },
 ];
 
 export const seedTenantAreas: TenantArea[] = [
@@ -46,34 +56,51 @@ export const seedTenantAreas: TenantArea[] = [
   { id: "ta-2", tenant_id: "u-tenant-2", city: "Papillion", zip: "68046", lat: 41.1544, lng: -96.0422, radius_miles: 12 },
 ];
 
+// Amara is fully Rental Ready (all 8 categories verified). Devon is Almost
+// Ready — identity is pending and everything after it hasn't started, which
+// is exactly the "here's what's missing" case the Passport should surface.
+
 export const seedIdentityVerification: IdentityVerification[] = [
-  { tenant_id: "u-tenant-1", status: "verified", provider: null, verified_at: "2026-06-05T00:00:00Z", expires_at: "2027-06-05T00:00:00Z" },
-  { tenant_id: "u-tenant-2", status: "pending", provider: null, verified_at: null, expires_at: null },
+  { tenant_id: "u-tenant-1", status: "verified", provider: "Persona", verified_at: "2026-06-05T00:00:00Z", expires_at: "2027-06-05T00:00:00Z" },
+  { tenant_id: "u-tenant-2", status: "pending", provider: "Persona", verified_at: null, expires_at: null },
 ];
 
 export const seedIncomeVerification: IncomeVerification[] = [
-  { tenant_id: "u-tenant-1", monthly_income_range: "$4,000-$5,000", status: "verified", provider: null, verified_at: "2026-06-05T00:00:00Z", expires_at: "2027-06-05T00:00:00Z" },
+  { tenant_id: "u-tenant-1", monthly_income_range: "$4,000-$5,000", status: "verified", provider: "Plaid Income", verified_at: "2026-06-05T00:00:00Z", expires_at: "2027-06-05T00:00:00Z" },
   { tenant_id: "u-tenant-2", monthly_income_range: "$6,000-$8,000", status: "not_started", provider: null, verified_at: null, expires_at: null },
 ];
 
+export const seedEmployment: Employment[] = [
+  { tenant_id: "u-tenant-1", employer: "Midlands Data Co.", title: "Software Engineer", status: "verified", provider: "The Work Number", verified_at: "2026-06-05T00:00:00Z", expires_at: "2027-06-05T00:00:00Z" },
+  { tenant_id: "u-tenant-2", employer: null, title: null, status: "not_started", provider: null, verified_at: null, expires_at: null },
+];
+
 export const seedCreditScreenings: CreditScreening[] = [
-  { tenant_id: "u-tenant-1", status: "verified", provider: null, report_ref: null, completed_at: "2026-06-06T00:00:00Z", expires_at: "2027-06-06T00:00:00Z" },
+  { tenant_id: "u-tenant-1", status: "verified", provider: "TransUnion SmartMove", report_ref: null, completed_at: "2026-06-06T00:00:00Z", expires_at: "2027-06-06T00:00:00Z" },
   { tenant_id: "u-tenant-2", status: "not_started", provider: null, report_ref: null, completed_at: null, expires_at: null },
 ];
 
 export const seedBackgroundScreenings: BackgroundScreening[] = [
-  { tenant_id: "u-tenant-1", status: "verified", provider: null, report_ref: null, completed_at: "2026-06-06T00:00:00Z" },
+  { tenant_id: "u-tenant-1", status: "verified", provider: "TransUnion SmartMove", report_ref: null, completed_at: "2026-06-06T00:00:00Z" },
   { tenant_id: "u-tenant-2", status: "not_started", provider: null, report_ref: null, completed_at: null },
 ];
 
 export const seedEvictionScreenings: EvictionScreening[] = [
-  { tenant_id: "u-tenant-1", status: "verified", provider: null, completed_at: "2026-06-06T00:00:00Z" },
+  { tenant_id: "u-tenant-1", status: "verified", provider: "TransUnion SmartMove", completed_at: "2026-06-06T00:00:00Z" },
   { tenant_id: "u-tenant-2", status: "not_started", provider: null, completed_at: null },
 ];
 
+export const seedRentalHistory: RentalHistoryEntry[] = [
+  { id: "rh-1", tenant_id: "u-tenant-1", prior_address: "902 Leavenworth St, Omaha, NE", landlord_contact: "prior.landlord@example.com", status: "verified", verified_at: "2026-06-07T00:00:00Z" },
+];
+
+export const seedTenantReferences: TenantReference[] = [
+  { id: "ref-1", tenant_id: "u-tenant-1", name: "Jordan Lee", relationship: "Former landlord", contact: "jordan.lee@example.com", status: "verified" },
+];
+
 export const seedLandlords: Landlord[] = [
-  { user_id: "u-landlord-1", company_name: "Prairie Ridge Properties", subscription_tier: "growth" },
-  { user_id: "u-landlord-2", company_name: "Marcus Rentals LLC", subscription_tier: "starter" },
+  { user_id: "u-landlord-1", company_name: "Prairie Ridge Properties", subscription_tier: "growth", identity_verified: true, contact_verified: true, business_verified: true, verified_at: "2026-05-16T00:00:00Z" },
+  { user_id: "u-landlord-2", company_name: "Marcus Rentals LLC", subscription_tier: "starter", identity_verified: true, contact_verified: false, business_verified: false, verified_at: null },
 ];
 
 export const seedSubscriptions: Subscription[] = [
@@ -81,39 +108,45 @@ export const seedSubscriptions: Subscription[] = [
   { landlord_id: "u-landlord-2", tier: "starter", stripe_customer_id: null, status: "trialing", renews_at: "2026-09-15T00:00:00Z" },
 ];
 
+export const seedSubscriptionPlans: SubscriptionPlan[] = [
+  { tier: "starter", name: "Starter", price_cents: 2900, billing_period: "month", features: ["1 active listing", "Basic match scoring", "Messaging"], active: true, updated_at: "2026-05-01T00:00:00Z" },
+  { tier: "growth", name: "Growth", price_cents: 7900, billing_period: "month", features: ["10 active listings", "Priority match ranking", "Saved tenants", "Email support"], active: true, updated_at: "2026-05-01T00:00:00Z" },
+  { tier: "portfolio", name: "Portfolio", price_cents: 19900, billing_period: "month", features: ["Unlimited listings", "Team seats", "Applicant analytics", "Priority support"], active: true, updated_at: "2026-05-01T00:00:00Z" },
+];
+
 export const seedProperties: Property[] = [
   {
     id: "p-1", landlord_id: "u-landlord-1", address: "412 Dodge St", city: "Omaha", state: "NE", zip: "68102",
     lat: 41.258, lng: -95.935, rent: 1450, deposit: 1450, beds: 1, baths: 1, sqft: 720, type: "apartment",
-    available_date: "2026-10-01", pet_policy: "cats_only", amenities: ["in-unit laundry", "gym", "rooftop deck"],
+    available_date: "2026-10-01", lease_term_months: 12, pet_policy: "cats_only", amenities: ["in-unit laundry", "gym", "rooftop deck"],
     description: "Bright one-bedroom in the heart of downtown, walk to the riverfront.", status: "active",
     created_at: "2026-08-01T00:00:00Z",
   },
   {
     id: "p-2", landlord_id: "u-landlord-1", address: "88 Capitol Ave", city: "Omaha", state: "NE", zip: "68114",
     lat: 41.264, lng: -96.005, rent: 1650, deposit: 1650, beds: 2, baths: 1, sqft: 950, type: "apartment",
-    available_date: "2026-10-15", pet_policy: "no_pets", amenities: ["dishwasher", "covered parking"],
+    available_date: "2026-10-15", lease_term_months: 12, pet_policy: "no_pets", amenities: ["dishwasher", "covered parking"],
     description: "Spacious two-bedroom with updated kitchen, quiet building.", status: "active",
     created_at: "2026-08-02T00:00:00Z",
   },
   {
     id: "p-3", landlord_id: "u-landlord-2", address: "215 Maple Ridge Dr", city: "Papillion", state: "NE", zip: "68046",
     lat: 41.153, lng: -96.041, rent: 2400, deposit: 2400, beds: 3, baths: 2, sqft: 1850, type: "house",
-    available_date: "2026-11-15", pet_policy: "cats_and_dogs", amenities: ["fenced yard", "garage", "central air"],
+    available_date: "2026-11-15", lease_term_months: 24, pet_policy: "cats_and_dogs", amenities: ["fenced yard", "garage", "central air"],
     description: "Family home near top-rated schools, fenced yard for pets and kids.", status: "active",
     created_at: "2026-08-03T00:00:00Z",
   },
   {
     id: "p-4", landlord_id: "u-landlord-2", address: "60 Orchard Ln", city: "Papillion", state: "NE", zip: "68046",
     lat: 41.148, lng: -96.038, rent: 2650, deposit: 2650, beds: 3, baths: 2, sqft: 2000, type: "townhouse",
-    available_date: "2026-12-01", pet_policy: "case_by_case", amenities: ["garage", "community pool"],
+    available_date: "2026-12-01", lease_term_months: 24, pet_policy: "case_by_case", amenities: ["garage", "community pool"],
     description: "Modern townhouse with community pool, close to shopping.", status: "active",
     created_at: "2026-08-05T00:00:00Z",
   },
   {
     id: "p-5", landlord_id: "u-landlord-1", address: "1200 Farnam St #3B", city: "Omaha", state: "NE", zip: "68102",
     lat: 41.256, lng: -95.933, rent: 1150, deposit: 1150, beds: 0, baths: 1, sqft: 480, type: "studio",
-    available_date: "2026-09-20", pet_policy: "no_pets", amenities: ["in-unit laundry"],
+    available_date: "2026-09-20", lease_term_months: 12, pet_policy: "no_pets", amenities: ["in-unit laundry"],
     description: "Efficient studio steps from downtown restaurants and transit.", status: "active",
     created_at: "2026-08-06T00:00:00Z",
   },
@@ -147,6 +180,28 @@ export const seedSavedProperties: SavedProperty[] = [
 export const seedSavedTenants: SavedTenant[] = [
   { landlord_id: "u-landlord-1", tenant_id: "u-tenant-1", created_at: "2026-08-10T00:00:00Z" },
 ];
+
+export const seedTenantInvitations: TenantInvitation[] = [
+  {
+    id: "inv-1", landlord_id: "u-landlord-1", tenant_id: "u-tenant-1", property_id: "p-5",
+    status: "sent", message: "Your Passport is a great match for our Farnam St studio — would you like to apply?",
+    created_at: "2026-08-15T00:00:00Z", responded_at: null,
+  },
+];
+
+export const seedTenantInterests: TenantInterest[] = [
+  { tenant_id: "u-tenant-2", property_id: "p-3", created_at: "2026-08-13T00:00:00Z" },
+];
+
+export const seedPassportShares: PassportShare[] = [
+  { id: "share-1", tenant_id: "u-tenant-1", landlord_id: "u-landlord-1", share_token: "share-token-1", expires_at: null, revoked_at: null, created_at: "2026-08-10T00:00:00Z" },
+];
+
+export const seedPassportViews: PassportView[] = [
+  { id: "view-1", tenant_id: "u-tenant-1", viewer_landlord_id: "u-landlord-1", viewed_at: "2026-08-10T08:00:00Z" },
+];
+
+export const seedLandlordReviews: LandlordReview[] = [];
 
 // Dev-mode only: plaintext passwords for the seeded demo accounts.
 // Never do this against a real backend — Supabase Auth handles hashing there.
