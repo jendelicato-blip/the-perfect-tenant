@@ -12,21 +12,29 @@ export function TenantSearch() {
   const [properties, setProperties] = useState<PropertyWithPhotos[]>([]);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<PropertyFilter>({});
+  const [perfectRentOnly, setPerfectRentOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  async function load(currentFilter: PropertyFilter) {
+  async function load(currentFilter: PropertyFilter, perfectRentFilter: boolean) {
     setLoading(true);
     const [results, saved] = await Promise.all([
       api.listProperties(currentFilter),
       user ? api.listSavedProperties(user.id) : Promise.resolve([]),
     ]);
-    setProperties(results);
+    let filtered = results;
+    if (perfectRentFilter) {
+      const withIncentives = await Promise.all(
+        results.map(async (p) => ((await api.listRentIncentives(p.id)).some((i) => i.enabled) ? p : null)),
+      );
+      filtered = withIncentives.filter((p): p is PropertyWithPhotos => p !== null);
+    }
+    setProperties(filtered);
     setSavedIds(new Set(saved.map((p) => p.id)));
     setLoading(false);
   }
 
   useEffect(() => {
-    load({});
+    load({}, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -48,7 +56,7 @@ export function TenantSearch() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          load(filter);
+          load(filter, perfectRentOnly);
         }}
         className="mt-4 grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-4"
       >
@@ -64,6 +72,10 @@ export function TenantSearch() {
         <FormRow label="Min beds">
           <Input type="number" value={filter.beds ?? ""} onChange={(e) => setFilter({ ...filter, beds: e.target.value ? Number(e.target.value) : undefined })} />
         </FormRow>
+        <label className="col-span-2 flex items-center gap-2 text-sm text-slate-700 sm:col-span-4">
+          <input type="checkbox" checked={perfectRentOnly} onChange={(e) => setPerfectRentOnly(e.target.checked)} />
+          Show only properties with Perfect Rent™ available
+        </label>
         <div className="col-span-2 sm:col-span-4">
           <Button type="submit">Apply filters</Button>
         </div>

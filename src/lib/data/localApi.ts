@@ -9,14 +9,22 @@ import type {
   Application,
   ApplicationStatus,
   Conversation,
+  IncentiveType,
   InvitationStatus,
+  JurisdictionRule,
   LandlordReview,
   Message,
   Notification,
   PassportShare,
   PassportView,
+  PaymentStatus,
+  PaymentVerification,
+  PerfectPayLevel,
+  PerfectPayMilestone,
   Property,
   PropertyWithPhotos,
+  RentIncentive,
+  RewardEvent,
   Role,
   SubscriptionPlan,
   SubscriptionTier,
@@ -28,10 +36,12 @@ import type {
   TenantSummary,
   User,
 } from "@/types/domain";
+import { computeOnTimeStreak } from "@/types/domain";
 import { getDb, mutate, newId } from "./localStore";
 import { scoreMatch } from "@/lib/match/score";
 import {
   ApiError,
+  type AdminMetrics,
   type AuthUser,
   type MarketplaceTenant,
   type NewLandlordReview,
@@ -63,7 +73,7 @@ export async function signUp(email: string, password: string, role: Role): Promi
     db.passwords[email] = password;
 
     if (role === "tenant") {
-      db.tenants.push({ user_id: id, intro_text: null, photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace" });
+      db.tenants.push({ user_id: id, intro_text: null, photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace", auto_payment_enrolled: false });
       db.tenantPreferences.push({
         tenant_id: id, min_rent: 0, max_rent: 3000, beds: 1, baths: 1, property_types: ["apartment"],
         move_in_date: new Date().toISOString().slice(0, 10), pets: false, parking_required: false, desired_amenities: [],
@@ -583,6 +593,16 @@ export async function markNotificationRead(notificationId: string): Promise<void
   });
 }
 
+// Inserts a notification of `type` for `userId` only if one doesn't already
+// exist — used for one-time nudges (e.g. "you may now qualify for Perfect
+// Rent™") that shouldn't repeat every time the triggering page loads.
+export async function notifyOnce(userId: string, type: string, body: string): Promise<void> {
+  mutate((db) => {
+    if (db.notifications.some((n) => n.user_id === userId && n.type === type)) return;
+    notify(db, userId, type, body);
+  });
+}
+
 // ---------- Subscriptions ----------
 
 export async function getSubscription(landlordId: string) {
@@ -613,9 +633,142 @@ export async function listApplicantsForProperty(propertyId: string): Promise<{ a
   return results.filter((r): r is { application: Application; tenant: TenantSummary } => r !== null);
 }
 
+// ---------- Perfect Rent™ ----------
+
+export async function listRentIncentives(propertyId: string): Promise<RentIncentive[]> {
+  const db = getDb();
+  return db.rentIncentives.filter((i) => i.property_id === propertyId);
+}
+
+export async function upsertRentIncentive(
+  propertyId: string,
+  type: IncentiveType,
+  patch: Partial<Pick<RentIncentive, "discount_cents" | "enabled" | "requires_lease_months">>,
+): Promise<RentIncentive> {
+  return mutate((db) => {
+    const existing = db.rentIncentives.find((i) => i.property_id === propertyId && i.type === type);
+    const now = new Date().toISOString();
+    if (existing) {
+      Object.assign(existing, patch, { updated_at: now });
+      return existing;
+    }
+    const incentive: RentIncentive = {
+      id: newId("ri"),
+      property_id: propertyId,
+      type,
+      discount_cents: patch.discount_cents ?? 0,
+      enabled: patch.enabled ?? true,
+      requires_lease_months: patch.requires_lease_months ?? null,
+      created_at: now,
+      updated_at: now,
+    };
+    db.rentIncentives.push(incentive);
+    return incentive;
+  });
+}
+
+export async function listJurisdictionRules(): Promise<JurisdictionRule[]> {
+  const db = getDb();
+  return db.jurisdictionRules;
+}
+
+export async function updateJurisdictionRule(state: string, incentiveType: IncentiveType, allowed: boolean): Promise<void> {
+  mutate((db) => {
+    const existing = db.jurisdictionRules.find((r) => r.state === state && r.incentive_type === incentiveType);
+    if (existing) {
+      existing.allowed = allowed;
+      existing.updated_at = new Date().toISOString();
+    } else {
+      db.jurisdictionRules.push({ id: newId("jr"), state, incentive_type: incentiveType, allowed, note: null, updated_at: new Date().toISOString() });
+    }
+  });
+}
+
+export async function setAutoPaymentEnrollment(tenantId: string, enrolled: boolean): Promise<void> {
+  mutate((db) => {
+    const t = db.tenants.find((x) => x.user_id === tenantId);
+    if (t) t.auto_payment_enrolled = enrolled;
+  });
+}
+
+// ---------- Perfect Pay™ ----------
+
+export async function recordPayment(
+  landlordId: string,
+  tenantId: string,
+  propertyId: string,
+  periodStart: string,
+  status: PaymentStatus,
+): Promise<PaymentVerification> {
+  return mutate((db) => {
+    const existing = db.paymentVerifications.find(
+      (p) => p.tenant_id === tenantId && p.property_id === propertyId && p.period_start === periodStart,
+    );
+    if (existing) {
+      existing.status = status;
+      existing.verified_at = new Date().toISOString();
+      return existing;
+    }
+    const payment: PaymentVerification = {
+      id: newId("pay"),
+      tenant_id: tenantId,
+      property_id: propertyId,
+      landlord_id: landlordId,
+      period_start: periodStart,
+      status,
+      verified_by: "landlord_confirmation",
+      verified_at: new Date().toISOString(),
+    };
+    db.paymentVerifications.push(payment);
+
+    if (status === "on_time") {
+      const streak = computeOnTimeStreak(db.paymentVerifications.filter((p) => p.tenant_id === tenantId));
+      const milestone = db.perfectPayMilestones.find((m) => m.consecutive_payments_required === streak && streak > 0);
+      if (milestone) {
+        db.rewardEvents.push({
+          id: newId("rw"),
+          tenant_id: tenantId,
+          type: "perfect_pay_milestone",
+          body: `🏆 Perfect Pay milestone! You've completed ${streak} verified on-time rent payments — Perfect Pay ${milestone.level[0].toUpperCase()}${milestone.level.slice(1)} achieved.`,
+          created_at: new Date().toISOString(),
+        });
+        notify(db, tenantId, "perfect_pay_milestone", `You've reached Perfect Pay ${milestone.level[0].toUpperCase()}${milestone.level.slice(1)}!`);
+      }
+    }
+    return payment;
+  });
+}
+
+export async function listPaymentVerificationsForTenant(tenantId: string): Promise<PaymentVerification[]> {
+  const db = getDb();
+  return db.paymentVerifications.filter((p) => p.tenant_id === tenantId);
+}
+
+export async function listPaymentVerificationsForLandlord(landlordId: string): Promise<PaymentVerification[]> {
+  const db = getDb();
+  return db.paymentVerifications.filter((p) => p.landlord_id === landlordId);
+}
+
+export async function listPerfectPayMilestones(): Promise<PerfectPayMilestone[]> {
+  const db = getDb();
+  return db.perfectPayMilestones;
+}
+
+export async function updatePerfectPayMilestone(level: PerfectPayLevel, consecutivePaymentsRequired: number): Promise<void> {
+  mutate((db) => {
+    const m = db.perfectPayMilestones.find((x) => x.level === level);
+    if (m) m.consecutive_payments_required = consecutivePaymentsRequired;
+  });
+}
+
+export async function listRewardEvents(tenantId: string): Promise<RewardEvent[]> {
+  const db = getDb();
+  return db.rewardEvents.filter((r) => r.tenant_id === tenantId).sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
 // ---------- Admin ----------
 
-export async function getAdminMetrics() {
+export async function getAdminMetrics(): Promise<AdminMetrics> {
   const db = getDb();
   const tenantSummaries = db.tenants.map((t) => buildTenantSummary(db, t.user_id)).filter((s): s is TenantSummary => s !== null);
   const rentalReadyCount = tenantSummaries.filter((s) => {
@@ -628,6 +781,14 @@ export async function getAdminMetrics() {
     .filter((s) => s.status === "active")
     .reduce((sum, s) => sum + (planByTier.get(s.tier) ?? 0), 0);
 
+  const activeIncentives = db.rentIncentives.filter((i) => i.enabled);
+  const propertiesWithIncentives = new Set(activeIncentives.map((i) => i.property_id)).size;
+  const avgDiscountCents = activeIncentives.length
+    ? Math.round(activeIncentives.reduce((sum, i) => sum + i.discount_cents, 0) / activeIncentives.length)
+    : 0;
+  const verifiedPaymentTenants = new Set(db.paymentVerifications.map((p) => p.tenant_id)).size;
+  const totalOnTimePayments = db.paymentVerifications.filter((p) => p.status === "on_time").length;
+
   return {
     totalTenants: db.tenants.length,
     rentalReadyTenants: rentalReadyCount,
@@ -637,6 +798,12 @@ export async function getAdminMetrics() {
     totalApplications: db.applications.length,
     passportShares: db.passportShares.length,
     mrrCents,
+    activeIncentivesCount: activeIncentives.length,
+    propertiesWithIncentives,
+    avgDiscountCents,
+    verifiedPaymentTenants,
+    totalOnTimePayments,
+    rewardEventsCount: db.rewardEvents.length,
   };
 }
 
@@ -645,6 +812,14 @@ export async function getAdminMetrics() {
 export async function getUserEmail(userId: string): Promise<string | null> {
   const db = getDb();
   return db.users.find((u) => u.id === userId)?.email ?? null;
+}
+
+// Own auto-pay enrollment, read directly off `tenants` — unlike
+// TenantSummary (sourced from the marketplace-safe view), this is only ever
+// called for a tenant looking at their own real Perfect Rent™ calculator.
+export async function getOwnAutoPaymentEnrollment(tenantId: string): Promise<boolean> {
+  const db = getDb();
+  return db.tenants.find((t) => t.user_id === tenantId)?.auto_payment_enrolled ?? false;
 }
 
 // ---------- Billing ----------

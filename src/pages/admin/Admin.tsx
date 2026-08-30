@@ -1,20 +1,10 @@
 import { useEffect, useState } from "react";
 import * as api from "@/lib/data/api";
+import type { AdminMetrics } from "@/lib/data/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
-import type { SubscriptionPlan } from "@/types/domain";
-
-interface Metrics {
-  totalTenants: number;
-  rentalReadyTenants: number;
-  totalLandlords: number;
-  verifiedLandlords: number;
-  totalProperties: number;
-  totalApplications: number;
-  passportShares: number;
-  mrrCents: number;
-}
+import type { PerfectPayMilestone, SubscriptionPlan } from "@/types/domain";
 
 function StatTile({ label, value }: { label: string; value: string | number }) {
   return (
@@ -26,14 +16,17 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
 }
 
 export function AdminDashboard() {
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
+  const [savingMilestone, setSavingMilestone] = useState<string | null>(null);
 
   async function load() {
-    const [m, p] = await Promise.all([api.getAdminMetrics(), api.listSubscriptionPlans()]);
+    const [m, p, ms] = await Promise.all([api.getAdminMetrics(), api.listSubscriptionPlans(), api.listPerfectPayMilestones()]);
     setMetrics(m);
     setPlans([...p].sort((a, b) => a.price_cents - b.price_cents));
+    setMilestones([...ms].sort((a, b) => a.sort_order - b.sort_order));
   }
 
   useEffect(() => {
@@ -47,6 +40,16 @@ export function AdminDashboard() {
       await load();
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function saveMilestone(milestone: PerfectPayMilestone, required: number) {
+    setSavingMilestone(milestone.level);
+    try {
+      await api.updatePerfectPayMilestone(milestone.level, required);
+      await load();
+    } finally {
+      setSavingMilestone(null);
     }
   }
 
@@ -65,6 +68,28 @@ export function AdminDashboard() {
         <StatTile label="Applications" value={metrics.totalApplications} />
         <StatTile label="Passport shares" value={metrics.passportShares} />
         <StatTile label="MRR" value={`$${(metrics.mrrCents / 100).toLocaleString()}`} />
+      </div>
+
+      <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect Rent™ analytics</h2>
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <StatTile label="Active incentives" value={metrics.activeIncentivesCount} />
+        <StatTile label="Properties offering incentives" value={metrics.propertiesWithIncentives} />
+        <StatTile label="Average discount" value={`$${(metrics.avgDiscountCents / 100).toLocaleString()}/mo`} />
+      </div>
+
+      <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect Pay™ / Rewards analytics</h2>
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <StatTile label="Tenants with verified payments" value={metrics.verifiedPaymentTenants} />
+        <StatTile label="Total on-time payments" value={metrics.totalOnTimePayments} />
+        <StatTile label="Reward events issued" value={metrics.rewardEventsCount} />
+      </div>
+
+      <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect Pay™ milestones</h2>
+      <p className="text-sm text-slate-600">Consecutive on-time payments required for each level — never hard-coded in the client.</p>
+      <div className="mt-4 space-y-2">
+        {milestones.map((m) => (
+          <MilestoneRow key={m.level} milestone={m} onSave={(n) => saveMilestone(m, n)} saving={savingMilestone === m.level} />
+        ))}
       </div>
 
       <h2 className="mt-8 text-lg font-semibold text-slate-900">Subscription plans</h2>
@@ -91,6 +116,22 @@ function PlanRow({ plan, onSave, saving }: { plan: SubscriptionPlan; onSave: (pr
         <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} className="w-24" />
         <span className="text-sm text-slate-500">/{plan.billing_period}</span>
         <Button variant="secondary" disabled={saving} onClick={() => onSave(Number(price))}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function MilestoneRow({ milestone, onSave, saving }: { milestone: PerfectPayMilestone; onSave: (required: number) => void; saving: boolean }) {
+  const [value, setValue] = useState(milestone.consecutive_payments_required.toString());
+  return (
+    <Card className="flex items-center justify-between p-4">
+      <p className="font-medium capitalize text-slate-900">{milestone.level}</p>
+      <div className="flex items-center gap-2">
+        <Input type="number" min={0} value={value} onChange={(e) => setValue(e.target.value)} className="w-24" />
+        <span className="text-sm text-slate-500">consecutive payments</span>
+        <Button variant="secondary" disabled={saving} onClick={() => onSave(Number(value))}>
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>

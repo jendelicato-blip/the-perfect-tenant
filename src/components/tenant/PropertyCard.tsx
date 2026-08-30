@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { PerfectRentBadge } from "@/components/tenant/PerfectRentBadge";
 import type { MatchReason, PropertyWithPhotos } from "@/types/domain";
 
 export function PropertyCard({
@@ -46,6 +47,10 @@ export function PropertyCard({
               ))}
             </ul>
           )}
+
+          <div className="mt-2">
+            <PerfectRentBadge propertyId={property.id} rentCents={property.rent * 100} state={property.state} />
+          </div>
 
           <div className="mt-3 flex items-center gap-2">
             <Link to={`/properties/${property.id}`} className="text-xs font-medium text-brand-600 hover:underline">

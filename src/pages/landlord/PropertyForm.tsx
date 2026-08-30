@@ -5,7 +5,10 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FormRow, Input, Select } from "@/components/ui/Field";
-import type { Property, PropertyStatus, PropertyType } from "@/types/domain";
+import { EMPTY_INCENTIVE_FORM, RentIncentiveEditor, type IncentiveFormValue } from "@/components/landlord/RentIncentiveEditor";
+import type { IncentiveType, JurisdictionRule, Property, PropertyStatus, PropertyType } from "@/types/domain";
+
+const INCENTIVE_TYPES: IncentiveType[] = ["passport_verified", "longer_lease", "auto_payment", "rental_history", "upfront_rent"];
 
 type PetPolicyOption = Property["pet_policy"];
 
@@ -42,6 +45,23 @@ export function LandlordPropertyForm() {
   const isEditing = Boolean(id);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [incentives, setIncentives] = useState<IncentiveFormValue>(EMPTY_INCENTIVE_FORM);
+  const [jurisdictionRules, setJurisdictionRules] = useState<JurisdictionRule[]>([]);
+
+  useEffect(() => {
+    api.listJurisdictionRules().then(setJurisdictionRules);
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    api.listRentIncentives(id).then((existing) => {
+      const next = { ...EMPTY_INCENTIVE_FORM };
+      for (const i of existing) {
+        next[i.type] = { enabled: i.enabled, discountDollars: i.discount_cents / 100, requiresLeaseMonths: i.requires_lease_months ?? next[i.type].requiresLeaseMonths };
+      }
+      setIncentives(next);
+    });
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -77,6 +97,7 @@ export function LandlordPropertyForm() {
     setSaving(true);
     try {
       const amenities = form.amenities.split(",").map((a) => a.trim()).filter(Boolean);
+      let propertyId = id;
       if (isEditing && id) {
         await api.updateProperty(id, { ...form, sqft: form.sqft || null, amenities });
       } else {
@@ -102,7 +123,21 @@ export function LandlordPropertyForm() {
           status: form.status,
         });
         if (form.photoUrl) await api.addPropertyPhoto(property.id, form.photoUrl);
+        propertyId = property.id;
       }
+
+      if (propertyId) {
+        await Promise.all(
+          INCENTIVE_TYPES.map((type) =>
+            api.upsertRentIncentive(propertyId!, type, {
+              enabled: incentives[type].enabled,
+              discount_cents: Math.round(incentives[type].discountDollars * 100),
+              requires_lease_months: type === "longer_lease" ? incentives[type].requiresLeaseMonths : null,
+            }),
+          ),
+        );
+      }
+
       navigate("/landlord");
     } finally {
       setSaving(false);
@@ -212,6 +247,24 @@ export function LandlordPropertyForm() {
             {saving ? "Saving…" : isEditing ? "Save changes" : "Create listing"}
           </Button>
         </form>
+      </Card>
+
+      <Card className="mt-6 p-6">
+        <h2 className="font-serif text-lg font-semibold text-ink-900">Perfect Rent™ Incentives</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Optional, lawful rental incentives you choose to offer — never based on protected
+          characteristics. Base rent stays the advertised price; incentives only ever lower it
+          for tenants who actually qualify.
+        </p>
+        <div className="mt-4">
+          <RentIncentiveEditor
+            value={incentives}
+            onChange={setIncentives}
+            jurisdictionRules={jurisdictionRules}
+            state={form.state}
+            baseRentDollars={form.rent}
+          />
+        </div>
       </Card>
     </div>
   );

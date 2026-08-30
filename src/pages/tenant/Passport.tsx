@@ -53,6 +53,14 @@ export function TenantPassport() {
     setSummary(s);
     setShares(sh);
     setViews(v);
+
+    if (s && computeRentalReady(s.verification).level === "rental_ready") {
+      await api.notifyOnce(
+        user.id,
+        "perfect_rent_eligible",
+        "🎉 You've completed your Perfect Tennant Passport — you may now qualify for Perfect Rent™ savings on properties offering a Passport discount.",
+      );
+    }
   }
 
   useEffect(() => {

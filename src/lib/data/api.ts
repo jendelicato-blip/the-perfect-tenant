@@ -65,12 +65,25 @@ export const {
   updateSubscriptionPlan,
   listNotifications,
   markNotificationRead,
+  notifyOnce,
   getSubscription,
   setSubscriptionTier,
   listApplicantsForProperty,
   getAdminMetrics,
   getUserEmail,
+  getOwnAutoPaymentEnrollment,
   startCheckout,
+  listRentIncentives,
+  upsertRentIncentive,
+  listJurisdictionRules,
+  updateJurisdictionRule,
+  setAutoPaymentEnrollment,
+  recordPayment,
+  listPaymentVerificationsForTenant,
+  listPaymentVerificationsForLandlord,
+  listPerfectPayMilestones,
+  updatePerfectPayMilestone,
+  listRewardEvents,
 } = impl;
 
-export type { AuthUser, MarketplaceTenant, NewLandlordReview, NewProperty, PropertyFilter, ScoredProperty } from "./types";
+export type { AdminMetrics, AuthUser, MarketplaceTenant, NewLandlordReview, NewProperty, PropertyFilter, ScoredProperty } from "./types";

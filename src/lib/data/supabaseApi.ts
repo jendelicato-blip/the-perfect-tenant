@@ -9,14 +9,22 @@ import type {
   Application,
   ApplicationStatus,
   Conversation,
+  IncentiveType,
   InvitationStatus,
+  JurisdictionRule,
   LandlordReview,
   Message,
   Notification,
   PassportShare,
   PassportView,
+  PaymentStatus,
+  PaymentVerification,
+  PerfectPayLevel,
+  PerfectPayMilestone,
   Property,
   PropertyWithPhotos,
+  RentIncentive,
+  RewardEvent,
   Role,
   SubscriptionPlan,
   SubscriptionTier,
@@ -29,10 +37,12 @@ import type {
   TenantVerificationDetails,
   VerificationStatus,
 } from "@/types/domain";
+import { computeOnTimeStreak } from "@/types/domain";
 import { scoreMatch } from "@/lib/match/score";
 import { supabase } from "./supabaseClient";
 import {
   ApiError,
+  type AdminMetrics,
   type AuthUser,
   type MarketplaceTenant,
   type NewLandlordReview,
@@ -144,6 +154,10 @@ function summaryFromProfileRow(row: Record<string, unknown>, areas: TenantArea[]
       household_size: (row.household_size as number) ?? 1,
       lease_pref_months: (row.lease_pref_months as number) ?? null,
       passport_visibility: (row.passport_visibility as Tenant["passport_visibility"]) ?? "marketplace",
+      // Not exposed by tenant_public_profile (Perfect Rent's per-tenant
+      // marketplace estimate is Phase 1-deferred — see docs/ARCHITECTURE.md);
+      // a tenant's own pages read this straight off `tenants` instead.
+      auto_payment_enrolled: false,
     },
     user: { id: row.tenant_id as string, email: row.email as string },
     preferences: {
@@ -709,6 +723,16 @@ export async function markNotificationRead(notificationId: string): Promise<void
   await db.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", notificationId);
 }
 
+// Inserts a notification of `type` for `userId` only if one doesn't already
+// exist — used for one-time nudges (e.g. "you may now qualify for Perfect
+// Rent™") that shouldn't repeat every time the triggering page loads.
+export async function notifyOnce(userId: string, type: string, body: string): Promise<void> {
+  const db = client();
+  const { data: existing } = await db.from("notifications").select("id").eq("user_id", userId).eq("type", type).maybeSingle();
+  if (existing) return;
+  await notify(userId, type, body);
+}
+
 // ---------- Subscriptions ----------
 
 export async function getSubscription(landlordId: string) {
@@ -740,15 +764,143 @@ export async function listApplicantsForProperty(
   return results.filter((r): r is { application: Application; tenant: TenantSummary } => r !== null);
 }
 
+// ---------- Perfect Rent™ ----------
+
+export async function listRentIncentives(propertyId: string): Promise<RentIncentive[]> {
+  const db = client();
+  const { data, error } = await db.from("rent_incentives").select("*").eq("property_id", propertyId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as RentIncentive[];
+}
+
+export async function upsertRentIncentive(
+  propertyId: string,
+  type: IncentiveType,
+  patch: Partial<Pick<RentIncentive, "discount_cents" | "enabled" | "requires_lease_months">>,
+): Promise<RentIncentive> {
+  const db = client();
+  const { data: existing } = await db.from("rent_incentives").select("*").eq("property_id", propertyId).eq("type", type).maybeSingle();
+  if (existing) {
+    const { data, error } = await db
+      .from("rent_incentives")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", existing.id)
+      .select()
+      .single();
+    if (error) throw new ApiError(error.message);
+    return data as RentIncentive;
+  }
+  const { data, error } = await db
+    .from("rent_incentives")
+    .insert({ property_id: propertyId, type, discount_cents: patch.discount_cents ?? 0, enabled: patch.enabled ?? true, requires_lease_months: patch.requires_lease_months ?? null })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  return data as RentIncentive;
+}
+
+export async function listJurisdictionRules(): Promise<JurisdictionRule[]> {
+  const db = client();
+  const { data, error } = await db.from("jurisdiction_rules").select("*");
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as JurisdictionRule[];
+}
+
+export async function updateJurisdictionRule(state: string, incentiveType: IncentiveType, allowed: boolean): Promise<void> {
+  const db = client();
+  const { data: existing } = await db.from("jurisdiction_rules").select("id").eq("state", state).eq("incentive_type", incentiveType).maybeSingle();
+  if (existing) {
+    await db.from("jurisdiction_rules").update({ allowed, updated_at: new Date().toISOString() }).eq("id", existing.id);
+  } else {
+    await db.from("jurisdiction_rules").insert({ state, incentive_type: incentiveType, allowed });
+  }
+}
+
+export async function setAutoPaymentEnrollment(tenantId: string, enrolled: boolean): Promise<void> {
+  const db = client();
+  await db.from("tenants").update({ auto_payment_enrolled: enrolled }).eq("user_id", tenantId);
+}
+
+// ---------- Perfect Pay™ ----------
+
+export async function recordPayment(
+  landlordId: string,
+  tenantId: string,
+  propertyId: string,
+  periodStart: string,
+  status: PaymentStatus,
+): Promise<PaymentVerification> {
+  const db = client();
+  const { data, error } = await db
+    .from("payment_verifications")
+    .upsert(
+      { tenant_id: tenantId, property_id: propertyId, landlord_id: landlordId, period_start: periodStart, status, verified_at: new Date().toISOString() },
+      { onConflict: "tenant_id,property_id,period_start" },
+    )
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+
+  if (status === "on_time") {
+    const { data: history } = await db.from("payment_verifications").select("period_start, status").eq("tenant_id", tenantId);
+    const streak = computeOnTimeStreak((history ?? []) as Pick<PaymentVerification, "period_start" | "status">[]);
+    const { data: milestone } = await db.from("perfect_pay_milestones").select("*").eq("consecutive_payments_required", streak).maybeSingle();
+    if (milestone && streak > 0) {
+      const levelLabel = `${milestone.level[0].toUpperCase()}${milestone.level.slice(1)}`;
+      await db.from("reward_events").insert({
+        tenant_id: tenantId,
+        type: "perfect_pay_milestone",
+        body: `🏆 Perfect Pay milestone! You've completed ${streak} verified on-time rent payments — Perfect Pay ${levelLabel} achieved.`,
+      });
+      await notify(tenantId, "perfect_pay_milestone", `You've reached Perfect Pay ${levelLabel}!`);
+    }
+  }
+
+  return data as PaymentVerification;
+}
+
+export async function listPaymentVerificationsForTenant(tenantId: string): Promise<PaymentVerification[]> {
+  const db = client();
+  const { data, error } = await db.from("payment_verifications").select("*").eq("tenant_id", tenantId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as PaymentVerification[];
+}
+
+export async function listPaymentVerificationsForLandlord(landlordId: string): Promise<PaymentVerification[]> {
+  const db = client();
+  const { data, error } = await db.from("payment_verifications").select("*").eq("landlord_id", landlordId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as PaymentVerification[];
+}
+
+export async function listPerfectPayMilestones(): Promise<PerfectPayMilestone[]> {
+  const db = client();
+  const { data, error } = await db.from("perfect_pay_milestones").select("*");
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as PerfectPayMilestone[];
+}
+
+export async function updatePerfectPayMilestone(level: PerfectPayLevel, consecutivePaymentsRequired: number): Promise<void> {
+  const db = client();
+  await db.from("perfect_pay_milestones").update({ consecutive_payments_required: consecutivePaymentsRequired }).eq("level", level);
+}
+
+export async function listRewardEvents(tenantId: string): Promise<RewardEvent[]> {
+  const db = client();
+  const { data, error } = await db.from("reward_events").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as RewardEvent[];
+}
+
 // ---------- Admin ----------
 // Reads here rely on RLS same as everywhere else — a non-admin caller simply
 // gets zero rows back from subscription_plans writes (blocked) and reduced
 // visibility on tables scoped to their own data, so this never needs a
 // separate "is this an admin" branch in application code.
 
-export async function getAdminMetrics() {
+export async function getAdminMetrics(): Promise<AdminMetrics> {
   const db = client();
-  const [tenants, landlords, properties, applications, shares, plans, subscriptions] = await Promise.all([
+  const [tenants, landlords, properties, applications, shares, plans, subscriptions, incentives, payments] = await Promise.all([
     db.from("tenants").select("user_id", { count: "exact", head: true }),
     db.from("landlords").select("user_id, identity_verified, contact_verified, business_verified"),
     db.from("properties").select("id", { count: "exact", head: true }),
@@ -756,6 +908,8 @@ export async function getAdminMetrics() {
     db.from("passport_shares").select("id", { count: "exact", head: true }),
     db.from("subscription_plans").select("tier, price_cents"),
     db.from("subscriptions").select("tier, status"),
+    db.from("rent_incentives").select("property_id, discount_cents, enabled"),
+    db.from("payment_verifications").select("tenant_id, status"),
   ]);
 
   const { data: profileRows } = await db.from("tenant_public_profile").select("*");
@@ -776,6 +930,16 @@ export async function getAdminMetrics() {
     .filter((s) => s.status === "active")
     .reduce((sum, s) => sum + (priceByTier.get(s.tier) ?? 0), 0);
 
+  const activeIncentives = (incentives.data ?? []).filter((i) => i.enabled);
+  const propertiesWithIncentives = new Set(activeIncentives.map((i) => i.property_id)).size;
+  const avgDiscountCents = activeIncentives.length
+    ? Math.round(activeIncentives.reduce((sum, i) => sum + i.discount_cents, 0) / activeIncentives.length)
+    : 0;
+  const paymentRows = payments.data ?? [];
+  const verifiedPaymentTenants = new Set(paymentRows.map((p) => p.tenant_id)).size;
+  const totalOnTimePayments = paymentRows.filter((p) => p.status === "on_time").length;
+  const { count: rewardEventsCount } = await db.from("reward_events").select("id", { count: "exact", head: true });
+
   return {
     totalTenants: tenants.count ?? 0,
     rentalReadyTenants,
@@ -785,6 +949,12 @@ export async function getAdminMetrics() {
     totalApplications: applications.count ?? 0,
     passportShares: shares.count ?? 0,
     mrrCents,
+    activeIncentivesCount: activeIncentives.length,
+    propertiesWithIncentives,
+    avgDiscountCents,
+    verifiedPaymentTenants,
+    totalOnTimePayments,
+    rewardEventsCount: rewardEventsCount ?? 0,
   };
 }
 
@@ -794,6 +964,16 @@ export async function getUserEmail(userId: string): Promise<string | null> {
   const db = client();
   const { data } = await db.from("users").select("email").eq("id", userId).maybeSingle();
   return data?.email ?? null;
+}
+
+// Own auto-pay enrollment, read directly off `tenants` (RLS: tenant_id =
+// auth.uid() only) — unlike TenantSummary (sourced from the
+// marketplace-safe view, which always reports false here), this reflects
+// the tenant's actual setting for their own real Perfect Rent™ calculator.
+export async function getOwnAutoPaymentEnrollment(tenantId: string): Promise<boolean> {
+  const db = client();
+  const { data } = await db.from("tenants").select("auto_payment_enrolled").eq("user_id", tenantId).maybeSingle();
+  return data?.auto_payment_enrolled ?? false;
 }
 
 // ---------- Billing ----------

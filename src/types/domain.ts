@@ -24,6 +24,7 @@ export interface Tenant {
   household_size: number;
   lease_pref_months: number | null;
   passport_visibility: PassportVisibility;
+  auto_payment_enrolled: boolean;
 }
 
 export type PropertyType = "apartment" | "house" | "condo" | "townhouse" | "studio";
@@ -434,4 +435,100 @@ export interface TenantVerificationDetails {
 
 export interface PropertyWithPhotos extends Property {
   photos: PropertyPhoto[];
+}
+
+// ---------- Perfect Rent™ / Perfect Pay™ / Perfect Rewards™ ----------
+//
+// Deliberately not modeled here: security deposits or prepaid-rent
+// incentives (jurisdiction-dependent, needs real legal review first — see
+// JurisdictionRule, which is a permissive compliance stub, not real legal
+// data) and a real payment-processor integration (Perfect Pay is backed
+// only by landlord-confirmed payments in Phase 1 — see PaymentVerification).
+
+export type IncentiveType = "passport_verified" | "longer_lease" | "auto_payment" | "rental_history" | "upfront_rent";
+
+export const INCENTIVE_LABELS: Record<IncentiveType, string> = {
+  passport_verified: "Perfect Tennant Passport discount",
+  longer_lease: "Longer-lease discount",
+  auto_payment: "Automatic payment discount",
+  rental_history: "Verified rental history discount",
+  upfront_rent: "Qualifying upfront-rent arrangement",
+};
+
+export interface RentIncentive {
+  id: string;
+  property_id: string;
+  type: IncentiveType;
+  discount_cents: number;
+  enabled: boolean;
+  requires_lease_months: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JurisdictionRule {
+  id: string;
+  state: string;
+  incentive_type: IncentiveType;
+  allowed: boolean;
+  note: string | null;
+  updated_at: string;
+}
+
+export type PaymentStatus = "on_time" | "late" | "disputed";
+
+export interface PaymentVerification {
+  id: string;
+  tenant_id: string;
+  property_id: string;
+  landlord_id: string;
+  period_start: string;
+  status: PaymentStatus;
+  verified_by: string;
+  verified_at: string;
+}
+
+export type PerfectPayLevel = "new" | "bronze" | "silver" | "gold" | "platinum";
+
+export interface PerfectPayMilestone {
+  level: PerfectPayLevel;
+  consecutive_payments_required: number;
+  sort_order: number;
+}
+
+export interface RewardEvent {
+  id: string;
+  tenant_id: string;
+  type: string;
+  body: string;
+  created_at: string;
+}
+
+// Streak = consecutive on-time payments counting back from the most recent
+// period, stopping at the first late/disputed payment or gap. A tenant with
+// zero verified payments yet has streak 0 (Perfect Pay — New).
+export function computeOnTimeStreak(payments: Pick<PaymentVerification, "period_start" | "status">[]): number {
+  const sorted = [...payments].sort((a, b) => b.period_start.localeCompare(a.period_start));
+  let streak = 0;
+  for (const p of sorted) {
+    if (p.status !== "on_time") break;
+    streak += 1;
+  }
+  return streak;
+}
+
+export interface PerfectPayResult {
+  level: PerfectPayLevel;
+  streak: number;
+  next: PerfectPayMilestone | null;
+}
+
+export function computePerfectPayLevel(streak: number, milestones: PerfectPayMilestone[]): PerfectPayResult {
+  const sorted = [...milestones].sort((a, b) => a.sort_order - b.sort_order);
+  let current = sorted[0] ?? { level: "new" as const, consecutive_payments_required: 0, sort_order: 0 };
+  for (const m of sorted) {
+    if (streak >= m.consecutive_payments_required) current = m;
+  }
+  const next = sorted.find((m) => m.sort_order > current.sort_order) ?? null;
+  return { level: current.level, streak, next };
 }

@@ -51,3 +51,20 @@ export interface MarketplaceTenant {
 export type NewLandlordReview = Omit<LandlordReview, "id" | "created_at" | "overall_rating"> & {
   overall_rating?: number;
 };
+
+export interface AdminMetrics {
+  totalTenants: number;
+  rentalReadyTenants: number;
+  totalLandlords: number;
+  verifiedLandlords: number;
+  totalProperties: number;
+  totalApplications: number;
+  passportShares: number;
+  mrrCents: number;
+  activeIncentivesCount: number;
+  propertiesWithIncentives: number;
+  avgDiscountCents: number;
+  verifiedPaymentTenants: number;
+  totalOnTimePayments: number;
+  rewardEventsCount: number;
+}

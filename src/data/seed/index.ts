@@ -7,14 +7,19 @@ import type {
   EvictionScreening,
   IdentityVerification,
   IncomeVerification,
+  JurisdictionRule,
   Landlord,
   LandlordReview,
   Message,
   PassportShare,
   PassportView,
+  PaymentVerification,
+  PerfectPayMilestone,
   Property,
   PropertyPhoto,
+  RentIncentive,
   RentalHistoryEntry,
+  RewardEvent,
   SavedProperty,
   SavedTenant,
   Subscription,
@@ -42,8 +47,8 @@ export const seedUsers: User[] = [
 ];
 
 export const seedTenants: Tenant[] = [
-  { user_id: "u-tenant-1", intro_text: "Quiet grad student, works remote, tidy and reliable.", photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace" },
-  { user_id: "u-tenant-2", intro_text: "Small family of three, looking for a long-term home near good schools.", photo_url: null, household_size: 3, lease_pref_months: 24, passport_visibility: "marketplace" },
+  { user_id: "u-tenant-1", intro_text: "Quiet grad student, works remote, tidy and reliable.", photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace", auto_payment_enrolled: true },
+  { user_id: "u-tenant-2", intro_text: "Small family of three, looking for a long-term home near good schools.", photo_url: null, household_size: 3, lease_pref_months: 24, passport_visibility: "marketplace", auto_payment_enrolled: false },
 ];
 
 export const seedTenantPreferences: TenantPreferences[] = [
@@ -161,7 +166,9 @@ export const seedPropertyPhotos: PropertyPhoto[] = [
 ];
 
 export const seedApplications: Application[] = [
-  { id: "app-1", tenant_id: "u-tenant-1", property_id: "p-1", status: "reviewing", created_at: "2026-08-10T00:00:00Z", updated_at: "2026-08-11T00:00:00Z" },
+  // Approved (not just "reviewing") so the Perfect Pay payment history below,
+  // and the tenant-review flow, both have a real approved tenancy behind them.
+  { id: "app-1", tenant_id: "u-tenant-1", property_id: "p-1", status: "approved", created_at: "2026-08-10T00:00:00Z", updated_at: "2026-08-11T00:00:00Z" },
 ];
 
 export const seedConversations: Conversation[] = [
@@ -202,6 +209,45 @@ export const seedPassportViews: PassportView[] = [
 ];
 
 export const seedLandlordReviews: LandlordReview[] = [];
+
+// ---------- Perfect Rent™ / Perfect Pay™ / Perfect Rewards™ ----------
+
+export const seedRentIncentives: RentIncentive[] = [
+  { id: "ri-1", property_id: "p-1", type: "passport_verified", discount_cents: 2500, enabled: true, requires_lease_months: null, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+  { id: "ri-2", property_id: "p-1", type: "longer_lease", discount_cents: 2500, enabled: true, requires_lease_months: 18, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+  { id: "ri-3", property_id: "p-1", type: "auto_payment", discount_cents: 2500, enabled: true, requires_lease_months: null, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+  { id: "ri-4", property_id: "p-3", type: "rental_history", discount_cents: 2500, enabled: true, requires_lease_months: null, created_at: "2026-08-03T00:00:00Z", updated_at: "2026-08-03T00:00:00Z" },
+  { id: "ri-5", property_id: "p-1", type: "upfront_rent", discount_cents: 5000, enabled: true, requires_lease_months: null, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+];
+
+// Permissive by default — this one row is the only demonstrated restriction,
+// so the "unavailable in this location" path has a real example without
+// blocking any other incentive in the seed data. Not real legal research.
+export const seedJurisdictionRules: JurisdictionRule[] = [
+  { id: "jr-1", state: "NE", incentive_type: "upfront_rent", allowed: false, note: "Requires legal review before enabling in Nebraska.", updated_at: "2026-08-01T00:00:00Z" },
+];
+
+// Amara: 6 consecutive on-time payments at 412 Dodge St -> Perfect Pay Bronze.
+export const seedPaymentVerifications: PaymentVerification[] = [
+  { id: "pay-1", tenant_id: "u-tenant-1", property_id: "p-1", landlord_id: "u-landlord-1", period_start: "2026-03-01", status: "on_time", verified_by: "landlord_confirmation", verified_at: "2026-03-02T00:00:00Z" },
+  { id: "pay-2", tenant_id: "u-tenant-1", property_id: "p-1", landlord_id: "u-landlord-1", period_start: "2026-04-01", status: "on_time", verified_by: "landlord_confirmation", verified_at: "2026-04-02T00:00:00Z" },
+  { id: "pay-3", tenant_id: "u-tenant-1", property_id: "p-1", landlord_id: "u-landlord-1", period_start: "2026-05-01", status: "on_time", verified_by: "landlord_confirmation", verified_at: "2026-05-02T00:00:00Z" },
+  { id: "pay-4", tenant_id: "u-tenant-1", property_id: "p-1", landlord_id: "u-landlord-1", period_start: "2026-06-01", status: "on_time", verified_by: "landlord_confirmation", verified_at: "2026-06-02T00:00:00Z" },
+  { id: "pay-5", tenant_id: "u-tenant-1", property_id: "p-1", landlord_id: "u-landlord-1", period_start: "2026-07-01", status: "on_time", verified_by: "landlord_confirmation", verified_at: "2026-07-02T00:00:00Z" },
+  { id: "pay-6", tenant_id: "u-tenant-1", property_id: "p-1", landlord_id: "u-landlord-1", period_start: "2026-08-01", status: "on_time", verified_by: "landlord_confirmation", verified_at: "2026-08-02T00:00:00Z" },
+];
+
+export const seedPerfectPayMilestones: PerfectPayMilestone[] = [
+  { level: "new", consecutive_payments_required: 0, sort_order: 0 },
+  { level: "bronze", consecutive_payments_required: 6, sort_order: 1 },
+  { level: "silver", consecutive_payments_required: 12, sort_order: 2 },
+  { level: "gold", consecutive_payments_required: 24, sort_order: 3 },
+  { level: "platinum", consecutive_payments_required: 36, sort_order: 4 },
+];
+
+export const seedRewardEvents: RewardEvent[] = [
+  { id: "rw-1", tenant_id: "u-tenant-1", type: "perfect_pay_milestone", body: "🏆 Perfect Pay milestone! You've completed 6 verified on-time rent payments — Perfect Pay Bronze achieved.", created_at: "2026-08-02T00:00:00Z" },
+];
 
 // Dev-mode only: plaintext passwords for the seeded demo accounts.
 // Never do this against a real backend — Supabase Auth handles hashing there.

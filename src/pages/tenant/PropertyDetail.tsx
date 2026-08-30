@@ -5,6 +5,8 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { PerfectRentBadge } from "@/components/tenant/PerfectRentBadge";
+import { PerfectRentCalculator } from "@/components/tenant/PerfectRentCalculator";
 import { isVerifiedLandlord, type Landlord, type LandlordReview, type PropertyWithPhotos } from "@/types/domain";
 
 export function PropertyDetail() {
@@ -80,7 +82,10 @@ export function PropertyDetail() {
             </div>
           )}
         </div>
-        <p className="text-2xl font-bold text-slate-900">${property.rent.toLocaleString()}/mo</p>
+        <div className="text-right">
+          <p className="text-2xl font-bold text-slate-900">Starting at ${property.rent.toLocaleString()}/mo</p>
+          <PerfectRentBadge propertyId={property.id} rentCents={property.rent * 100} state={property.state} />
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -108,6 +113,13 @@ export function PropertyDetail() {
           </>
         )}
       </Card>
+
+      <PerfectRentCalculator
+        propertyId={property.id}
+        rentCents={property.rent * 100}
+        state={property.state}
+        propertyLeaseTermMonths={property.lease_term_months}
+      />
 
       {user?.role === "tenant" && (
         <div className="mt-6 flex flex-wrap gap-3">

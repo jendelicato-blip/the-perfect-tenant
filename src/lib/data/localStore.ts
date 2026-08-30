@@ -7,15 +7,20 @@ import type {
   EvictionScreening,
   IdentityVerification,
   IncomeVerification,
+  JurisdictionRule,
   Landlord,
   LandlordReview,
   Message,
   Notification,
   PassportShare,
   PassportView,
+  PaymentVerification,
+  PerfectPayMilestone,
   Property,
   PropertyPhoto,
+  RentIncentive,
   RentalHistoryEntry,
+  RewardEvent,
   SavedProperty,
   SavedTenant,
   Subscription,
@@ -58,12 +63,17 @@ interface Db {
   passportShares: PassportShare[];
   passportViews: PassportView[];
   landlordReviews: LandlordReview[];
+  rentIncentives: RentIncentive[];
+  jurisdictionRules: JurisdictionRule[];
+  paymentVerifications: PaymentVerification[];
+  perfectPayMilestones: PerfectPayMilestone[];
+  rewardEvents: RewardEvent[];
   notifications: Notification[];
   passwords: Record<string, string>;
   currentUserId: string | null;
 }
 
-const STORAGE_KEY = "tpt.devstore.v2";
+const STORAGE_KEY = "tpt.devstore.v3";
 
 function freshDb(): Db {
   return {
@@ -94,6 +104,11 @@ function freshDb(): Db {
     passportShares: [...seed.seedPassportShares],
     passportViews: [...seed.seedPassportViews],
     landlordReviews: [...seed.seedLandlordReviews],
+    rentIncentives: [...seed.seedRentIncentives],
+    jurisdictionRules: [...seed.seedJurisdictionRules],
+    paymentVerifications: [...seed.seedPaymentVerifications],
+    perfectPayMilestones: [...seed.seedPerfectPayMilestones],
+    rewardEvents: [...seed.seedRewardEvents],
     notifications: [],
     passwords: { ...seed.seedPasswords },
     currentUserId: null,

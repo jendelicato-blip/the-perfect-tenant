@@ -20,6 +20,8 @@ export function Navbar() {
       <Link to="/saved" className="text-sm font-medium text-ink-400 hover:text-brand-700">Saved</Link>
       <Link to="/messages" className="text-sm font-medium text-ink-400 hover:text-brand-700">Messages</Link>
       <Link to="/passport" className="text-sm font-medium text-ink-400 hover:text-brand-700">My Passport</Link>
+      <Link to="/perfect-pay" className="text-sm font-medium text-ink-400 hover:text-brand-700">Perfect Pay™</Link>
+      <Link to="/rewards" className="text-sm font-medium text-ink-400 hover:text-brand-700">Rewards</Link>
     </>
   );
 

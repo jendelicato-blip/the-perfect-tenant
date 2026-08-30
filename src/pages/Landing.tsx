@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { isSupabaseConfigured } from "@/lib/data/supabaseClient";
 import * as api from "@/lib/data/api";
+import { PerfectRentBadge } from "@/components/tenant/PerfectRentBadge";
 import type { PropertyWithPhotos } from "@/types/domain";
 
 const TRUST_ITEMS = [
@@ -85,7 +86,7 @@ export function Landing() {
             </div>
             <Card className="absolute -bottom-10 -right-4 w-64 p-4 shadow-xl sm:-right-8">
               <p className="font-serif text-sm font-semibold text-ink-900">Your Perfect Rent™</p>
-              <p className="mt-0.5 text-[11px] text-slate-400">Illustrative example — not a live offer yet</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">Example calculation — see your real numbers on any listing</p>
               <div className="mt-3 space-y-1.5 text-sm">
                 <div className="flex justify-between text-slate-500">
                   <span>Base Rent</span>
@@ -100,9 +101,9 @@ export function Landing() {
                   <span>$1,900/mo</span>
                 </div>
               </div>
-              <div className="mt-3 rounded-lg bg-brand-50 px-3 py-2 text-center text-sm font-semibold text-brand-700">
-                Concept: save ~$1,200/yr
-              </div>
+              <Link to="/search" className="mt-3 block rounded-lg bg-brand-50 px-3 py-2 text-center text-sm font-semibold text-brand-700 hover:bg-brand-100">
+                See real Perfect Rent™ options →
+              </Link>
             </Card>
           </div>
         </div>
@@ -177,14 +178,17 @@ export function Landing() {
 
           <div className="space-y-5">
             <div className="rounded-2xl bg-ink-900 p-5 text-white">
-              <span className="inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-300">
-                Coming soon
+              <span className="inline-block rounded-full bg-brand-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-300">
+                Pay on time. Get rewarded.
               </span>
               <p className="mt-2 font-serif text-lg font-semibold">Perfect Pay™</p>
               <p className="mt-1 text-sm text-slate-300">
-                Build your on-time payment history through the platform and unlock rewards over
-                time.
+                Build your verified on-time payment history and track your progress toward
+                Bronze, Silver, Gold, and Platinum.
               </p>
+              <Link to="/perfect-pay" className="mt-3 inline-block text-sm font-medium text-brand-300 hover:underline">
+                Learn more →
+              </Link>
             </div>
 
             {featured && (
@@ -199,6 +203,9 @@ export function Landing() {
                     <span className="text-slate-300">♡</span>
                   </div>
                   <p className="mt-2 text-lg font-semibold text-brand-700">${featured.rent.toLocaleString()}/mo</p>
+                  <div className="mt-1">
+                    <PerfectRentBadge propertyId={featured.id} rentCents={featured.rent * 100} state={featured.state} />
+                  </div>
                   <Link to={`/properties/${featured.id}`} className="mt-2 inline-block text-sm font-medium text-brand-700 hover:underline">
                     View listing →
                   </Link>

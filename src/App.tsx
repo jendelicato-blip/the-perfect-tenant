@@ -17,6 +17,8 @@ import { TenantSaved } from "@/pages/tenant/Saved";
 import { TenantPassport } from "@/pages/tenant/Passport";
 import { TenantVerificationCenter } from "@/pages/tenant/VerificationCenter";
 import { TenantInvitations } from "@/pages/tenant/Invitations";
+import { TenantPerfectPay } from "@/pages/tenant/PerfectPay";
+import { TenantRewards } from "@/pages/tenant/Rewards";
 import { LandlordDashboard } from "@/pages/landlord/Dashboard";
 import { LandlordPropertyForm } from "@/pages/landlord/PropertyForm";
 import { LandlordApplicants } from "@/pages/landlord/Applicants";
@@ -103,6 +105,22 @@ function App() {
           element={
             <RequireRole role="tenant">
               <TenantVerificationCenter />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/perfect-pay"
+          element={
+            <RequireRole role="tenant">
+              <TenantPerfectPay />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/rewards"
+          element={
+            <RequireRole role="tenant">
+              <TenantRewards />
             </RequireRole>
           }
         />

@@ -113,3 +113,72 @@ marketplace tenant against a listing — so there is exactly one scoring impleme
 Fair-Housing-safe, not two that could drift apart. Do not add a scoring input derived from a
 protected characteristic (familial status, source of income where prohibited, etc.) — see the
 Fair Housing checklist in the original build plan.
+
+## Perfect Rent™, Perfect Pay™, Perfect Rewards™
+
+These three features share one rule: **never fabricate a number, never guarantee an unconfirmed
+outcome.** Each is built as a pure computation over real rows, called identically from the
+landlord editor, the tenant-facing calculator, and the admin analytics — never three separate
+implementations that could quietly disagree.
+
+### Perfect Rent™: incentive engine + jurisdiction gate
+
+`rent_incentives` (one row per `property_id` + `incentive_type`) is landlord-configured — see
+`RentIncentiveEditor.tsx`. `computePerfectRent` (`src/lib/perfectRent/engine.ts`) is the single
+calculator: given a property's base rent, its active incentives, and a tenant's actual
+qualification facts (Rental Ready status, chosen lease length vs. the property's term, their real
+`auto_payment_enrolled` flag, whether their rental history is verified), it returns each
+incentive's status —
+
+- `applied` — the tenant qualifies right now, and the discount is reflected in the quoted rent.
+- `available` — offered on this property, but the tenant doesn't yet qualify (e.g. not Rental
+  Ready) — shown so they know what would unlock it, not counted in the quote.
+- `unavailable_location` — blocked by the jurisdiction gate (below); shown, not hidden, so a
+  landlord can't quietly re-offer something the platform has determined is unsafe there.
+- `requires_landlord_confirmation` — `upfront_rent` *only*. This type is never auto-applied to
+  `estimatedRentCents`, no matter how well a tenant qualifies; an upfront-rent arrangement is a
+  negotiation between landlord and tenant, not something the platform can quote as a fixed
+  discount. This is also why there is no deposit/prepaid-rent feature anywhere in the schema:
+  deposit limits are jurisdiction-specific and legally sensitive in a way this engine is not
+  positioned to adjudicate — see the comment in `0005_perfect_rent_pay_rewards.sql`.
+
+Every caller (`PerfectRentCalculator.tsx`, `PerfectRentBadge.tsx`, `Rewards.tsx`) always renders
+Base Rent alongside the computed Potential Incentivized Rent side by side — never the discounted
+number alone — so a tenant can never mistake a potential incentive for a locked-in price.
+
+`buildJurisdictionAllowed` (`src/lib/perfectRent/jurisdiction.ts`) checks `jurisdiction_rules` for
+a `(state, incentive_type)` block and defaults to **allowed** when no row exists — permissive by
+default, since most jurisdictions have no real rule seeded yet (see README Compliance notes: this
+is a working mechanism, not real legal research). `computePerfectRent` runs every incentive
+through this gate before evaluating tenant qualification, so a blocked type can never reach
+`applied` regardless of how the landlord configured it.
+
+### Perfect Pay™: landlord-confirmed payments only
+
+`payment_verifications` rows are created exactly one way: a landlord calling
+`recordPayment(tenantId, propertyId, periodStart, status)` from `/landlord/applicants` for an
+approved applicant. There is no payment processor integration and no path by which the platform
+marks a payment "verified" on its own — this is a deliberate reading of the payment-data rule in
+the build plan (only a legitimate source, and landlord confirmation is the only one implemented,
+may mark a payment verified).
+
+`computeOnTimeStreak` (`src/types/domain.ts`) sorts a tenant's payments by period and counts
+consecutive `on_time` entries from the most recent, stopping at the first gap or non-`on_time`
+status. `computePerfectPayLevel(streak, milestones)` maps that streak against
+`perfect_pay_milestones` (`consecutive_payments_required` per level, admin-editable at `/admin`,
+never hard-coded in the client) to produce the tenant's current level and the next one up.
+`recordPayment` also checks whether the new streak just crossed a milestone threshold and, only
+then, inserts a `reward_events` row and fires a one-time notification (`notifyOnce`) — a milestone
+is only ever recorded once a landlord's confirmation actually reaches it, never speculatively.
+
+### Perfect Rewards™: a read-only scorecard, not a new data model
+
+`/rewards` (`Rewards.tsx`) introduces no new source of truth — it composes Rental Ready
+(`computeRentalReady`), Perfect Pay level (`computePerfectPayLevel`), verified rental history (from
+the existing verification tables), and Perfect Rent™ potential savings (`computePerfectRent`
+against the tenant's saved/applied properties) into one view. Achievement badges are professional
+labels over real thresholds (e.g. "Rental Ready," "Bronze Payer") — deliberately not a points/XP
+game. The "Coming Soon" future partner categories (Financial, Insurance, Moving, Home Services,
+Utilities) render as labeled placeholders with no partner data behind them; do not wire in partner
+offers here without real partner integrations — a fabricated offer would violate the same
+never-fabricate rule as an invented savings number.
