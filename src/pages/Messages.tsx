@@ -5,23 +5,25 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
-import type { Conversation, Message, User } from "@/types/domain";
-import { getDb } from "@/lib/data/localStore";
-
-function otherPartyEmail(conversation: Conversation, currentUserId: string): string {
-  const db = getDb();
-  const otherId = conversation.tenant_id === currentUserId ? conversation.landlord_id : conversation.tenant_id;
-  const other = db.users.find((u: User) => u.id === otherId);
-  return other?.email ?? "Unknown";
-}
+import type { Conversation, Message } from "@/types/domain";
 
 export function ConversationList() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [emails, setEmails] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!user) return;
-    api.listConversationsForUser(user.id, user.role).then(setConversations);
+    api.listConversationsForUser(user.id, user.role).then(async (list) => {
+      setConversations(list);
+      const entries = await Promise.all(
+        list.map(async (c) => {
+          const otherId = c.tenant_id === user.id ? c.landlord_id : c.tenant_id;
+          return [otherId, (await api.getUserEmail(otherId)) ?? "Unknown"] as const;
+        }),
+      );
+      setEmails(Object.fromEntries(entries));
+    });
   }, [user]);
 
   if (!user) return null;
@@ -31,13 +33,16 @@ export function ConversationList() {
       <h1 className="text-2xl font-bold text-slate-900">Messages</h1>
       <div className="mt-6 space-y-2">
         {conversations.length === 0 && <p className="text-sm text-slate-500">No conversations yet.</p>}
-        {conversations.map((c) => (
-          <Link key={c.id} to={`/messages/${c.id}`}>
-            <Card className="p-4 hover:border-brand-300">
-              <p className="font-medium text-slate-900">{otherPartyEmail(c, user.id)}</p>
-            </Card>
-          </Link>
-        ))}
+        {conversations.map((c) => {
+          const otherId = c.tenant_id === user.id ? c.landlord_id : c.tenant_id;
+          return (
+            <Link key={c.id} to={`/messages/${c.id}`}>
+              <Card className="p-4 hover:border-brand-300">
+                <p className="font-medium text-slate-900">{emails[otherId] ?? "…"}</p>
+              </Card>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

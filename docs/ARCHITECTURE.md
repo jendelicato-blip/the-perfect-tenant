@@ -1,27 +1,25 @@
 # Architecture
 
-## Data layer: local dev-mode now, Supabase-ready by design
+## Data layer: two backends, one facade
 
-Every page and component calls into `src/lib/data/api.ts`. That module's function signatures
-and return types are shaped 1:1 against `src/types/domain.ts`, which is itself shaped 1:1
-against `supabase/migrations/0001_init.sql`. Today, every function in `api.ts` reads and writes
-`src/lib/data/localStore.ts` — an in-memory store persisted to `localStorage`, seeded from
-`src/data/seed/`.
+Every page and component calls into `src/lib/data/api.ts`. It picks one of two implementations
+at module load time, based on whether `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are set:
 
-To connect a live Supabase project:
+- `src/lib/data/localApi.ts` — local dev-mode, backed by `localStore.ts`
+  (`localStorage`, seeded from `src/data/seed/`). Zero setup, used when Supabase isn't
+  configured.
+- `src/lib/data/supabaseApi.ts` — the live Supabase project, using `supabase.auth.*` and
+  `supabase.from(...)` against the schema in `supabase/migrations/0001_init.sql`.
 
-1. Apply `supabase/migrations/0001_init.sql` to the project (creates tables, enums, RLS
-   policies, and the `tenant_public_profile` view).
-2. Set `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (see `.env.example`).
-3. Replace each function body in `api.ts` with the equivalent `supabase.from(...)` /
-   `supabase.auth.*` call. No changes are needed in `src/pages/` or `src/components/` — they
-   only depend on `api.ts`'s exported types and function signatures.
-4. Auth: swap `signUp`/`signIn`/`signOut`/`getCurrentUser` to `supabase.auth.signUp`,
-   `signInWithPassword`, `signOut`, and `getSession`, then upsert the corresponding row into
-   `users` (and `tenants`/`landlords`) on first sign-in.
+Both implementations share their types from `src/lib/data/types.ts` (`AuthUser`,
+`PropertyFilter`, `NewProperty`, `ScoredProperty`, `StartCheckout`), which is what lets
+`src/pages/` and `src/components/` stay identical regardless of which backend is active — they
+only ever import from `api.ts`.
 
-This mirrors the same swap-ready pattern used in the reference Supabase build this project was
-scaffolded from (seed JSON → live Postgres with no UI changes).
+A Supabase project (`the-perfect-tenant`, ref `xbpsuwmmpqltnifmjptb`) is already provisioned
+with the migration applied and demo accounts seeded (see the README for credentials). To point
+at a *different* project instead, apply `supabase/migrations/0001_init.sql` to it and set the
+env vars in `.env.local` (see `.env.example`).
 
 ## Row Level Security model
 
@@ -42,6 +40,30 @@ scaffolded from (seed JSON → live Postgres with no UI changes).
 **Do not** add a table or column exposing tenant PII/screening data without adding both an
 owner-only RLS policy and, if landlords need any visibility into it, extending
 `tenant_public_profile` rather than granting broader table access.
+
+## Billing: Stripe Checkout via Edge Functions
+
+`api.startCheckout(landlordId, tier)` is the entry point (called from the Pricing page). In
+local dev-mode it always returns `null`, so the page falls back to `setSubscriptionTier` (Phase
+1 stub — no payment collection). Against Supabase, it invokes the `stripe-checkout` Edge
+Function, which:
+
+1. Verifies the caller via their Supabase JWT (`verify_jwt = true` on the function) and confirms
+   they're a landlord.
+2. Finds or creates a Stripe customer for them (id cached in `subscriptions.stripe_customer_id`).
+3. Creates a Checkout Session for the requested tier's price and returns its URL for the client
+   to redirect to.
+
+`stripe-webhook` (`verify_jwt = false` — Stripe authenticates via the `Stripe-Signature` header
+instead) handles `checkout.session.completed`, `customer.subscription.updated`, and
+`customer.subscription.deleted`, updating `subscriptions.tier`/`status`/`renews_at` and
+`landlords.subscription_tier` using the service role (bypassing RLS, since Stripe isn't an
+authenticated Supabase user). Both functions read Stripe secrets from Edge Function env vars —
+see the README's "Stripe billing" section for which ones to set and where.
+
+If `stripe-checkout` returns an error (e.g. no price configured for a tier because secrets
+aren't set yet), `api.startCheckout` returns `null` rather than throwing, so the UI degrades to
+the same stub behavior as local dev-mode instead of showing a hard failure.
 
 ## Match scoring
 

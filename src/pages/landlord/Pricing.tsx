@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
@@ -29,20 +30,33 @@ const TIERS: { tier: SubscriptionTier; name: string; price: string; features: st
 
 export function LandlordPricing() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [updating, setUpdating] = useState<SubscriptionTier | null>(null);
+  const checkoutResult = searchParams.get("checkout");
 
   useEffect(() => {
     if (!user) return;
     api.getSubscription(user.id).then(setSubscription);
   }, [user]);
 
+  useEffect(() => {
+    if (checkoutResult) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [checkoutResult, setSearchParams]);
+
   async function selectTier(tier: SubscriptionTier) {
     if (!user) return;
     setUpdating(tier);
     try {
-      // Stripe checkout would be initiated here in production — this Phase 1
-      // stub updates the subscription tier directly without payment collection.
+      const checkoutUrl = await api.startCheckout(user.id, tier);
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl;
+        return;
+      }
+      // No live Stripe checkout configured (local dev-mode, or Stripe
+      // secrets not set yet) — fall back to updating the tier directly.
       await api.setSubscriptionTier(user.id, tier);
       setSubscription((prev) => (prev ? { ...prev, tier } : prev));
     } finally {
@@ -54,9 +68,19 @@ export function LandlordPricing() {
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="text-2xl font-bold text-slate-900">Billing</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Stripe checkout isn't wired up yet — selecting a tier here updates your plan directly for
-        Phase 1 testing.
+        Choosing a plan redirects to Stripe Checkout once it's configured (see
+        docs/ARCHITECTURE.md); until then it updates your plan directly for Phase 1 testing.
       </p>
+      {checkoutResult === "success" && (
+        <p className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          Checkout complete — your plan will update once Stripe's webhook confirms the payment.
+        </p>
+      )}
+      {checkoutResult === "cancelled" && (
+        <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          Checkout was cancelled — no changes were made.
+        </p>
+      )}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         {TIERS.map((t) => {
