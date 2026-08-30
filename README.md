@@ -20,6 +20,15 @@ React + TypeScript + Vite + Tailwind CSS + React Router. Data layer designed 1:1
 Postgres schema (`supabase/migrations/`) so it can move from local dev-mode data to a live
 Supabase project with no UI changes — see `docs/ARCHITECTURE.md`.
 
+**Visual design**: a green/navy palette (`tailwind.config.js` — `brand`/`ink`) with Fraunces
+(serif, headings) + Inter (sans, body), loaded via Google Fonts in `index.html`. Logged-out
+visitors get `MarketingNavbar.tsx` (mega-menu style: For Tenants/For Landlords dropdowns,
+Pricing, About Us); authenticated users get the functional in-app `Navbar.tsx`, same palette.
+The homepage's "Your Perfect Rent™" and "Perfect Pay™" cards are intentionally illustrative
+only — marked "Illustrative example" / "Coming soon" — no rent-discount or payment-rewards logic
+exists behind them; don't wire real numbers into them without designing that feature properly
+first (new schema, real payment data, etc.).
+
 ## Getting started
 
 ```bash

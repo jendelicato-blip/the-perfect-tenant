@@ -4,6 +4,7 @@ import { RequireRole } from "@/components/RequireRole";
 import { RequireAdmin } from "@/components/RequireAdmin";
 import { Landing } from "@/pages/Landing";
 import { ForLandlords } from "@/pages/ForLandlords";
+import { About } from "@/pages/About";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
 import { ConversationList, ConversationThread } from "@/pages/Messages";
@@ -33,6 +34,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/for-landlords" element={<ForLandlords />} />
+        <Route path="/about" element={<About />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
 
@@ -169,14 +171,7 @@ function App() {
             </RequireRole>
           }
         />
-        <Route
-          path="/pricing"
-          element={
-            <RequireRole role="landlord">
-              <LandlordPricing />
-            </RequireRole>
-          }
-        />
+        <Route path="/pricing" element={<LandlordPricing />} />
 
         <Route
           path="/admin"
