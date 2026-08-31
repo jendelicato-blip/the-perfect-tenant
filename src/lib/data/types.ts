@@ -87,6 +87,16 @@ export interface CurrentRental {
   property: import("@/types/domain").PropertyWithPhotos;
 }
 
+// Only ever the tenants with an approved application on one of this
+// landlord's own properties — see landlord_visible_autopay in
+// 0008_landlord_autopay_visibility.sql for why this is safe to expose
+// (unlike TenantSummary, which always reports false here for any other
+// viewer).
+export interface TenantAutopayStatus {
+  tenantId: string;
+  autoPaymentEnrolled: boolean;
+}
+
 // Impressions/clicks are anonymous counters (see 0006_perfect_partners.sql)
 // — this is what a landlord's "Your Property Promotion" tile and the admin
 // campaign review queue both read, computed from real rows, never invented.

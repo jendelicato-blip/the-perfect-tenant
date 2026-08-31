@@ -65,6 +65,7 @@ import {
   type NewProperty,
   type PropertyFilter,
   type ScoredProperty,
+  type TenantAutopayStatus,
 } from "./types";
 
 export { ApiError };
@@ -860,6 +861,18 @@ export async function updateLandlordPayoutSchedule(landlordId: string, schedule:
 export async function getPlatformFeeConfig(): Promise<PlatformFeeConfig> {
   const db = getDb();
   return db.platformFeeConfig;
+}
+
+export async function listLandlordTenantAutopayStatus(landlordId: string): Promise<TenantAutopayStatus[]> {
+  const db = getDb();
+  const myPropertyIds = new Set(db.properties.filter((p) => p.landlord_id === landlordId).map((p) => p.id));
+  const tenantIds = new Set(
+    db.applications.filter((a) => a.status === "approved" && myPropertyIds.has(a.property_id)).map((a) => a.tenant_id),
+  );
+  return [...tenantIds].map((tenantId) => ({
+    tenantId,
+    autoPaymentEnrolled: db.tenants.find((t) => t.user_id === tenantId)?.auto_payment_enrolled ?? false,
+  }));
 }
 
 export async function updatePlatformFeeConfig(patch: Partial<Omit<PlatformFeeConfig, "updated_at">>): Promise<void> {

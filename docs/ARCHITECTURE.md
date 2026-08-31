@@ -206,6 +206,31 @@ That view doesn't exist yet, so a landlord with zero payment_verifications rows 
 sees no Perfect Pay card at all, rather than an incorrect "New" showing zero history for a tenant who
 may have an established one elsewhere.
 
+### Payout History & Reconciliation Reporting: computed, not a second ledger
+
+`/landlord/payouts` (`src/lib/perfectPay/reconciliation.ts`) introduces no new source of truth for
+money — it's a read model over data the landlord already has full legitimate access to: their own
+`payment_verifications` (RLS: `landlord_id = auth.uid()`), their own properties' `rent_incentives`,
+and the current `platform_fee_config`. `groupPayoutPeriods` always groups by calendar month, never
+by the landlord's configured `payout_schedule` (daily/weekly/monthly) — `payment_verifications` only
+ever records one row per month of rent (see `recordPayment`), so there's no sub-monthly structure in
+the real data to group by; `payout_schedule` describes how a real integration would time
+disbursements, not something this data can be split into without inventing it. Every payout period
+carries the label "✓ Reflects confirmed rent," deliberately not "Paid" or "Transferred" — no bank
+transfer or settlement event backs any of this.
+
+The Monthly Collection Report's "Autopay rate" needed one new, narrowly-scoped visibility grant:
+`landlord_visible_autopay` (`0008_landlord_autopay_visibility.sql`), a security-barrier view in the
+same pattern as `tenant_public_profile` (own WHERE-clause access control, not RLS re-inheritance —
+flagged by the same accepted `security_definer_view` lint), but scoped narrower: it exposes only
+`auto_payment_enrolled`, and only for tenants with an approved application on a property the querying
+landlord owns (`p.landlord_id = auth.uid()` inside the view body). `payment_method_type`/`last4` are
+deliberately not in it — those stay private per the existing note on `LandlordPayoutAccount`/`Tenant`.
+Incentive totals in the report are the landlord's own configured `rent_incentives` split by
+`funded_by`, not attributed to any specific tenant's payment — `payment_verifications` doesn't record
+which incentives applied to a given confirmed payment, so this reports "what's configured," never
+"what was deducted from this specific payout."
+
 ### Perfect Rewards™: a read-only scorecard, not a new data model
 
 `/rewards` (`Rewards.tsx`) introduces no new source of truth — it composes Rental Ready

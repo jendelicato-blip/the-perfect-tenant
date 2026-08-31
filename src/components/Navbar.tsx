@@ -35,6 +35,7 @@ export function Navbar() {
     <>
       <Link to="/landlord" className={navLinkClass}>Listings</Link>
       <Link to="/landlord/rent-collection" className={navLinkClass}>Rent Collection</Link>
+      <Link to="/landlord/payouts" className={navLinkClass}>Payouts</Link>
       <Link to="/landlord/marketplace" className={navLinkClass}>Tenant Marketplace</Link>
       <Link to="/landlord/interests" className={navLinkClass}>Tenant Interest</Link>
       <Link to="/landlord/saved" className={navLinkClass}>Saved tenants</Link>

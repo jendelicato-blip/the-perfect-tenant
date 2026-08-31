@@ -273,6 +273,13 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
 - **A public-safe, cross-landlord Perfect Pay™ history view** (e.g. a landlord scanning a Passport
   share link the same way a QR code might) — see the next bullet below for the RLS reasoning; this
   needs a `tenant_public_profile`-style safe view/RPC, not built yet.
+- **Real payout transfers, sub-monthly (daily/weekly) payout timing, and per-payment incentive
+  attribution** — `/landlord/payouts` reports payout history and a monthly collection report
+  computed from confirmed `payment_verifications`, a landlord's own configured incentives, and the
+  current platform fee config, but no money actually moves and no payout period is ever finer than a
+  calendar month (payment records are inherently monthly — see the migration/architecture notes).
+  Incentive totals shown are "what's configured on your properties," not "what was deducted from
+  this tenant's payment," since that attribution isn't recorded anywhere.
 - **Any security-deposit or prepaid-rent feature** — intentionally not built; needs real legal
   review first (see Compliance notes).
 - **Real jurisdiction/compliance data behind the Perfect Rent™ gate** — `jurisdiction_rules` is a

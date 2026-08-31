@@ -77,6 +77,9 @@ export function LandlordDashboard() {
           <Link to="/landlord/rent-collection">
             <Button variant="secondary">View Rent Collection</Button>
           </Link>
+          <Link to="/landlord/payouts">
+            <Button variant="secondary">Payouts &amp; Reconciliation</Button>
+          </Link>
           <Link to="/landlord/perfect-pay-settings">
             <Button variant="secondary">Perfect Pay Settings</Button>
           </Link>

@@ -65,6 +65,7 @@ import {
   type NewProperty,
   type PropertyFilter,
   type ScoredProperty,
+  type TenantAutopayStatus,
 } from "./types";
 
 export { ApiError };
@@ -974,6 +975,13 @@ export async function getPlatformFeeConfig(): Promise<PlatformFeeConfig> {
 export async function updatePlatformFeeConfig(patch: Partial<Omit<PlatformFeeConfig, "updated_at">>): Promise<void> {
   const db = client();
   await db.from("platform_fee_config").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", 1);
+}
+
+export async function listLandlordTenantAutopayStatus(landlordId: string): Promise<TenantAutopayStatus[]> {
+  const db = client();
+  const { data, error } = await db.from("landlord_visible_autopay").select("tenant_id, auto_payment_enrolled").eq("landlord_id", landlordId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []).map((row) => ({ tenantId: row.tenant_id as string, autoPaymentEnrolled: Boolean(row.auto_payment_enrolled) }));
 }
 
 export async function updatePerfectPayMilestone(level: PerfectPayLevel, consecutivePaymentsRequired: number): Promise<void> {

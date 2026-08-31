@@ -114,6 +114,7 @@ export const {
   updateLandlordPayoutSchedule,
   getPlatformFeeConfig,
   updatePlatformFeeConfig,
+  listLandlordTenantAutopayStatus,
 } = impl;
 
 export type {
@@ -127,4 +128,5 @@ export type {
   NewProperty,
   PropertyFilter,
   ScoredProperty,
+  TenantAutopayStatus,
 } from "./types";
