@@ -31,6 +31,15 @@ Marketplace, Applicants, Saved Tenants) — there is deliberately no `rental_rea
 anywhere. Storing it as a cached field would let it drift from the verification data it's
 supposed to summarize; recomputing it is cheap and always correct.
 
+Verification Center goes one step further than a bare status per category: for the four
+categories with a self-reported form behind them (income, employment, rental history,
+references), `VerificationRow` explicitly labels whatever's shown as either "📝 Tenant Provided"
+or "✓ Independently Verified" — never both, never neither when there's something to say. A tenant
+typing in an income range is not the same fact as a provider confirming it, and the UI never lets
+the former borrow the latter's credibility. Identity/credit/background/eviction have no
+tenant-reported form at all (there's no "self-attested credit score"), so those rows say so
+explicitly rather than silently omitting the line.
+
 ## Tenant Marketplace visibility
 
 `tenants.passport_visibility` (`marketplace` / `applied_or_saved_only` / `private`, tenant-

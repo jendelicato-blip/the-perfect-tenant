@@ -10,19 +10,40 @@ interface Row {
   label: string;
   detail: VerificationDetail;
   extra?: string;
+  // Whether row.extra is data the tenant typed in themselves (income range,
+  // employer name, a prior address, a reference) as opposed to something
+  // with no self-reported form at all (identity, credit/background/eviction
+  // screening — nothing to distinguish there since there's no tenant-entered
+  // version of a credit report). Drives the explicit Tenant Provided vs.
+  // Independently Verified line below — never inferred from `extra` alone,
+  // since a category can have neither.
+  tenantProvidable?: boolean;
 }
 
+// Every category makes explicit whether what's shown is something the
+// tenant typed in themselves or something a third party actually confirmed
+// — never let a self-reported value read as if it were verified just
+// because it's sitting in a "Verification Center."
 function VerificationRow({ row }: { row: Row }) {
+  const verified = row.detail.status === "verified";
   return (
     <div className="flex flex-col gap-2 border-b border-slate-100 py-4 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p className="font-medium text-slate-900">{row.label}</p>
         {row.extra && <p className="text-sm text-slate-500">{row.extra}</p>}
-        {row.detail.provider && (
+        {verified && row.detail.provider && (
           <p className="mt-1 text-xs text-slate-400">
-            ✓ Third-Party Verified — verified through {row.detail.provider}
+            ✓ Independently Verified — verified through {row.detail.provider}
             {row.detail.verified_at && ` on ${new Date(row.detail.verified_at).toLocaleDateString()}`}
           </p>
+        )}
+        {!verified && row.tenantProvidable && (
+          <p className="mt-1 text-xs text-amber-600">
+            📝 Tenant Provided{row.extra ? " — not yet independently verified" : " — nothing entered yet"}
+          </p>
+        )}
+        {!verified && !row.tenantProvidable && (
+          <p className="mt-1 text-xs text-slate-400">Independently verified only — no tenant-provided alternative.</p>
         )}
         {row.detail.expires_at && (
           <p className="text-xs text-slate-400">Expires {new Date(row.detail.expires_at).toLocaleDateString()} — re-verification required after this date.</p>
@@ -50,8 +71,13 @@ export function TenantVerificationCenter() {
 
   const rows: Row[] = [
     { label: "Identity", detail: details.identity },
-    { label: "Employment", detail: details.employment, extra: details.employment.employer ? `${details.employment.title ?? "—"} at ${details.employment.employer}` : undefined },
-    { label: "Income", detail: details.income, extra: details.income.monthly_income_range ?? undefined },
+    {
+      label: "Employment",
+      detail: details.employment,
+      extra: details.employment.employer ? `${details.employment.title ?? "—"} at ${details.employment.employer}` : undefined,
+      tenantProvidable: true,
+    },
+    { label: "Income", detail: details.income, extra: details.income.monthly_income_range ?? undefined, tenantProvidable: true },
     {
       label: "Rental History",
       detail: {
@@ -61,6 +87,7 @@ export function TenantVerificationCenter() {
         expires_at: null,
       },
       extra: details.rentalHistory[0]?.prior_address,
+      tenantProvidable: true,
     },
     { label: "Credit Screening", detail: details.credit },
     { label: "Background Screening", detail: details.background },
@@ -74,6 +101,7 @@ export function TenantVerificationCenter() {
         expires_at: null,
       },
       extra: details.references[0] ? `${details.references[0].name} (${details.references[0].relationship})` : undefined,
+      tenantProvidable: true,
     },
   ];
 

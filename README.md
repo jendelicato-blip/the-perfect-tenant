@@ -112,7 +112,10 @@ Until that key is set, both spots show the same fixed photo they always have —
   derived live from the 8 verification categories, never a stored/cached field, so it can't
   drift from the underlying data. Tells the tenant exactly what's missing.
 - **Verification Center** (`/verification`) — every category's status, date verified, expiration,
-  provider, with "✓ Third-Party Verified" labeling. No black-box score — ever.
+  provider, and — for the categories with a self-reported form (income, employment, rental
+  history, references) — an explicit "📝 Tenant Provided" vs. "✓ Independently Verified" line, so a
+  typed-in income range is never visually confused with an actual verification result. No
+  black-box score — ever.
 - **Perfect Match™** (`src/lib/match/score.ts`) — rule-based, transparent, weighted across rent,
   beds/baths, location radius, move-in date, lease length, pet policy, parking, and amenities.
   Every reason shown is one of those objective facts, matched or not — never a protected
