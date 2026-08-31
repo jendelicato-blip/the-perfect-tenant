@@ -67,9 +67,11 @@ import {
   type AuthUser,
   type CampaignMetrics,
   type CurrentRental,
+  type LandlordPublicProfile,
   type MarketplaceTenant,
   type NewLandlordReview,
   type NewProperty,
+  type PassportViewWithViewer,
   type PropertyFilter,
   type ScoredProperty,
   type TenantAutopayStatus,
@@ -280,6 +282,24 @@ export async function getLandlordProfile(landlordId: string) {
   const db = client();
   const { data } = await db.from("landlords").select("*").eq("user_id", landlordId).single();
   return data ?? null;
+}
+
+// Tenant-facing lookup (see the LandlordPublicProfile comment in types.ts) —
+// reads landlord_public_profile (0012), not the RLS-restricted landlords
+// table directly, since a tenant isn't the owner of that row.
+export async function getLandlordPublicProfile(landlordId: string): Promise<LandlordPublicProfile | null> {
+  const db = client();
+  const { data } = await db.from("landlord_public_profile").select("*").eq("landlord_id", landlordId).maybeSingle();
+  if (!data) return null;
+  return {
+    landlord_id: data.landlord_id as string,
+    email: data.email as string,
+    company_name: (data.company_name as string) ?? null,
+    identity_verified: Boolean(data.identity_verified),
+    contact_verified: Boolean(data.contact_verified),
+    business_verified: Boolean(data.business_verified),
+    verified_at: (data.verified_at as string) ?? null,
+  };
 }
 
 export async function updateLandlordCompanyName(landlordId: string, companyName: string): Promise<void> {
@@ -674,9 +694,18 @@ export async function listInterestsForLandlord(landlordId: string): Promise<{ in
 
 // ---------- Passport sharing + view history ----------
 
-export async function createPassportShare(tenantId: string, landlordId: string | null): Promise<PassportShare> {
+export async function createPassportShare(
+  tenantId: string,
+  landlordId: string | null,
+  expiresInDays: number | null = null,
+): Promise<PassportShare> {
   const db = client();
-  const { data, error } = await db.from("passport_shares").insert({ tenant_id: tenantId, landlord_id: landlordId }).select().single();
+  const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString() : null;
+  const { data, error } = await db
+    .from("passport_shares")
+    .insert({ tenant_id: tenantId, landlord_id: landlordId, expires_at: expiresAt })
+    .select()
+    .single();
   if (error) throw new ApiError(error.message);
   return data as PassportShare;
 }
@@ -703,6 +732,28 @@ export async function listPassportViews(tenantId: string): Promise<PassportView[
   const { data, error } = await db.from("passport_views").select("*").eq("tenant_id", tenantId).order("viewed_at", { ascending: false });
   if (error) throw new ApiError(error.message);
   return (data ?? []) as PassportView[];
+}
+
+// Enriched with viewer identity — passport_views_tenant_read (0002) already
+// lets the tenant read these rows; landlord_public_profile (0012) is what
+// makes the viewer's name/email safely readable too.
+export async function listPassportViewsWithViewers(tenantId: string): Promise<PassportViewWithViewer[]> {
+  const views = await listPassportViews(tenantId);
+  if (views.length === 0) return [];
+  const db = client();
+  const landlordIds = [...new Set(views.map((v) => v.viewer_landlord_id))];
+  const { data: profiles } = await db.from("landlord_public_profile").select("*").in("landlord_id", landlordIds);
+  const profileById = new Map((profiles ?? []).map((p) => [p.landlord_id as string, p]));
+  return views.map((v) => {
+    const profile = profileById.get(v.viewer_landlord_id);
+    return {
+      id: v.id,
+      viewed_at: v.viewed_at,
+      viewerLandlordId: v.viewer_landlord_id,
+      viewerCompanyName: (profile?.company_name as string) ?? null,
+      viewerEmail: (profile?.email as string) ?? "Unknown landlord",
+    };
+  });
 }
 
 // ---------- Landlord reviews ----------

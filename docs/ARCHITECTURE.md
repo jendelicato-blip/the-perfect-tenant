@@ -49,6 +49,33 @@ verified across all 8 categories (Rental Ready), and — when a `propertyId` is 
 each against that property with the same `scoreMatch` engine tenants use for their own matches
 (symmetric: Perfect Match™ is one engine, called from both directions).
 
+## Landlord public profile: fixing a real RLS gap, then building QR sharing on top
+
+`landlords` has always been owner-read-only (`landlords_owner_all`, 0001) — only the landlord
+themselves could read their own row. `PropertyDetail.tsx`'s "✓ Verified Landlord" badge and
+`Passport.tsx`'s "who viewed my Passport" log both need a *tenant* to read a landlord's identity,
+which silently returned nothing under that policy on a live Supabase project (worked by accident in
+local dev-mode, which has no RLS to enforce it). `landlord_public_profile`
+(`0012_landlord_public_profile_and_qr_sharing.sql`) is a narrow, safe view — same security-barrier
+pattern as `tenant_public_profile` (0004) and `landlord_visible_autopay` (0008) — exposing only
+`company_name`/`email`/the three verification flags, nothing else from `landlords`.
+`getLandlordPublicProfile` (new) reads it; `getLandlordProfile` (a landlord reading their own
+dashboard, already correctly scoped by owner RLS) is untouched.
+
+That fix is what QR Passport sharing (`Passport.tsx`) is built on:
+
+- **The QR code encodes only the existing share link** (`qrcode.react`, pure client-side encoding,
+  no network call) — never Passport data directly. Scanning it does exactly what clicking a copied
+  link already did; the QR code is a presentation of an existing, already-revocable mechanism, not
+  a new one.
+- **Expiration** (`createPassportShare`'s new `expiresInDays` param) sets `passport_shares.expires_at`
+  at creation time — `ShareRow` computes "expired" client-side (`expires_at < now`) since Postgres
+  has no need to eagerly delete an expired row; RLS/the share page's own lookup is what actually
+  matters for access, not this display state.
+- **"Who viewed my Passport"** (`listPassportViewsWithViewers`) enriches each `PassportView` (0002)
+  with the viewing landlord's company name/email via `landlord_public_profile` — the same view this
+  section's fix introduced, reused rather than duplicated.
+
 ## Row Level Security model
 
 - Every tenant-owned table (`tenants`, `tenant_preferences`, `tenant_areas`, `tenant_pets`, and

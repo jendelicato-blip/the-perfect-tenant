@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "@/lib/data/api";
+import type { LandlordPublicProfile } from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PerfectRentBadge } from "@/components/tenant/PerfectRentBadge";
 import { PerfectRentCalculator } from "@/components/tenant/PerfectRentCalculator";
-import { isVerifiedLandlord, type Landlord, type LandlordReview, type PropertyWithPhotos } from "@/types/domain";
+import { isVerifiedLandlord, type LandlordReview, type PropertyWithPhotos } from "@/types/domain";
 
 export function PropertyDetail() {
   const { id } = useParams<{ id: string }>();
@@ -17,7 +18,7 @@ export function PropertyDetail() {
   const [applied, setApplied] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [interested, setInterested] = useState(false);
-  const [landlord, setLandlord] = useState<Landlord | null>(null);
+  const [landlord, setLandlord] = useState<LandlordPublicProfile | null>(null);
   const [reviews, setReviews] = useState<LandlordReview[]>([]);
 
   useEffect(() => {
@@ -25,7 +26,7 @@ export function PropertyDetail() {
     api.getProperty(id).then((p) => {
       setProperty(p);
       if (p) {
-        api.getLandlordProfile(p.landlord_id).then((l) => setLandlord(l as Landlord | null));
+        api.getLandlordPublicProfile(p.landlord_id).then(setLandlord);
         api.listLandlordReviews(p.landlord_id).then(setReviews);
       }
     });

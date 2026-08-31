@@ -67,9 +67,11 @@ import {
   type AuthUser,
   type CampaignMetrics,
   type CurrentRental,
+  type LandlordPublicProfile,
   type MarketplaceTenant,
   type NewLandlordReview,
   type NewProperty,
+  type PassportViewWithViewer,
   type PropertyFilter,
   type ScoredProperty,
   type TenantAutopayStatus,
@@ -242,6 +244,25 @@ export async function removeTenantArea(areaId: string): Promise<void> {
 export async function getLandlordProfile(landlordId: string) {
   const db = getDb();
   return db.landlords.find((l) => l.user_id === landlordId) ?? null;
+}
+
+// Tenant-facing lookup — see the LandlordPublicProfile comment in types.ts.
+// Local dev-mode has no RLS to route around, but keeping the shape
+// consistent with the real (view-backed) supabaseApi.ts implementation.
+export async function getLandlordPublicProfile(landlordId: string): Promise<LandlordPublicProfile | null> {
+  const db = getDb();
+  const landlord = db.landlords.find((l) => l.user_id === landlordId);
+  const user = db.users.find((u) => u.id === landlordId);
+  if (!landlord || !user) return null;
+  return {
+    landlord_id: landlord.user_id,
+    email: user.email,
+    company_name: landlord.company_name,
+    identity_verified: landlord.identity_verified,
+    contact_verified: landlord.contact_verified,
+    business_verified: landlord.business_verified,
+    verified_at: landlord.verified_at,
+  };
 }
 
 export async function updateLandlordCompanyName(landlordId: string, companyName: string): Promise<void> {
@@ -553,11 +574,17 @@ export async function listInterestsForLandlord(landlordId: string): Promise<{ in
 
 // ---------- Passport sharing + view history ----------
 
-export async function createPassportShare(tenantId: string, landlordId: string | null): Promise<PassportShare> {
+export async function createPassportShare(
+  tenantId: string,
+  landlordId: string | null,
+  expiresInDays: number | null = null,
+): Promise<PassportShare> {
   return mutate((db) => {
     const share: PassportShare = {
       id: newId("share"), tenant_id: tenantId, landlord_id: landlordId,
-      share_token: newId("token"), expires_at: null, revoked_at: null, created_at: new Date().toISOString(),
+      share_token: newId("token"),
+      expires_at: expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString() : null,
+      revoked_at: null, created_at: new Date().toISOString(),
     };
     db.passportShares.push(share);
     return share;
@@ -585,6 +612,22 @@ export async function recordPassportView(tenantId: string, viewerLandlordId: str
 export async function listPassportViews(tenantId: string): Promise<PassportView[]> {
   const db = getDb();
   return db.passportViews.filter((v) => v.tenant_id === tenantId).sort((a, b) => b.viewed_at.localeCompare(a.viewed_at));
+}
+
+export async function listPassportViewsWithViewers(tenantId: string): Promise<PassportViewWithViewer[]> {
+  const db = getDb();
+  const views = db.passportViews.filter((v) => v.tenant_id === tenantId).sort((a, b) => b.viewed_at.localeCompare(a.viewed_at));
+  return views.map((v) => {
+    const landlord = db.landlords.find((l) => l.user_id === v.viewer_landlord_id);
+    const user = db.users.find((u) => u.id === v.viewer_landlord_id);
+    return {
+      id: v.id,
+      viewed_at: v.viewed_at,
+      viewerLandlordId: v.viewer_landlord_id,
+      viewerCompanyName: landlord?.company_name ?? null,
+      viewerEmail: user?.email ?? "Unknown landlord",
+    };
+  });
 }
 
 // ---------- Landlord reviews ----------

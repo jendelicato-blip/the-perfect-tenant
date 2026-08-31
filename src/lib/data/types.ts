@@ -79,6 +79,33 @@ export interface AdminMetrics {
   verifiedRevenueCents: number;
 }
 
+// Tenant-facing view of a landlord — deliberately narrower than the
+// `Landlord` domain type (no subscription_tier, nothing internal). Backed by
+// the landlord_public_profile view (0012) on Supabase; getLandlordProfile
+// (a landlord reading their OWN dashboard) is untouched and keeps returning
+// the full Landlord row.
+export interface LandlordPublicProfile {
+  landlord_id: string;
+  email: string;
+  company_name: string | null;
+  identity_verified: boolean;
+  contact_verified: boolean;
+  business_verified: boolean;
+  verified_at: string | null;
+}
+
+// A PassportView (domain.ts) enriched with who actually viewed it, for the
+// tenant's own "Recent Passport Activity" log — never shown to anyone but
+// the tenant themselves (same passport_views_tenant_read RLS as the base
+// PassportView read already goes through).
+export interface PassportViewWithViewer {
+  id: string;
+  viewed_at: string;
+  viewerLandlordId: string;
+  viewerCompanyName: string | null;
+  viewerEmail: string;
+}
+
 // A tenant's current rental for Perfect Pay purposes — the property behind
 // their most recently approved application. There's no separate "lease"
 // object yet (see the domain.ts note on that), so this is the same

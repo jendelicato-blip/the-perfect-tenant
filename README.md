@@ -103,7 +103,11 @@ Until that key is set, both spots show the same fixed photo they always have —
 
 - **Perfect10ant Passport™** (`/passport`) — the tenant's reusable profile: Rental Ready
   status, verification summary, rental preferences, share/revoke access (secure link or a
-  specific landlord), a "Recent Passport Activity" view log, and a milestone timeline.
+  specific landlord) with an optional expiration and a real scannable QR code for each active
+  share (`qrcode.react`, encodes only the same share link — never Passport data directly), a
+  "Recent Passport Activity" view log naming which landlord actually viewed it (via the new
+  `landlord_public_profile` view — see `docs/ARCHITECTURE.md` for the RLS gap this also fixed for
+  the "✓ Verified Landlord" badge on property listings), and a milestone timeline.
 - **Rental Ready status** (🟢/🟡/🔴, `computeRentalReady` in `src/types/domain.ts`) — always
   derived live from the 8 verification categories, never a stored/cached field, so it can't
   drift from the underlying data. Tells the tenant exactly what's missing.
@@ -290,8 +294,6 @@ Until that key is set, both spots show the same fixed photo they always have —
   dispute handling for a review the landlord contests).
 - **Full admin analytics** (charts, churn, geographic growth, verification failure trends) — the
   Admin page ships the underlying metrics and plan editor, not visualizations.
-- **QR code passport sharing** — the share-link and per-landlord grant/revoke flows are built;
-  rendering an actual QR code image was cut for scope, not because it's hard to add later.
 - **"Perfect10ant Protected™"** and other future revenue lines (lease services, rent
   collection, tenant service partnerships) — intentionally not built or implied as existing,
   per the build plan's own instruction not to claim a protection product that doesn't exist yet.
