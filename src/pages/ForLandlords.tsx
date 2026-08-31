@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { InlineLogo } from "@/components/Logo";
 
 export function ForLandlords() {
   return (
@@ -37,7 +38,7 @@ export function ForLandlords() {
           </ol>
         </Card>
         <Card className="p-6 ring-2 ring-brand-500">
-          <h2 className="font-semibold text-slate-900">The Perfect10ant</h2>
+          <h2 className="font-semibold text-slate-900"><InlineLogo className="h-6 w-auto" /></h2>
           <ol className="mt-3 space-y-2 text-sm text-slate-600">
             <li>Property posted</li>
             <li>↓ Perfect Match™</li>
@@ -49,7 +50,9 @@ export function ForLandlords() {
       </div>
 
       <Card className="mt-8 p-6">
-        <h2 className="text-center font-semibold text-slate-900">The Perfect10ant verifies both sides</h2>
+        <h2 className="text-center font-semibold text-slate-900">
+          <InlineLogo className="h-6 w-auto" /> verifies both sides
+        </h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <p className="text-sm font-medium text-slate-700">Tenant: "Is this landlord legitimate?"</p>

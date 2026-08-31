@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { isSupabaseConfigured } from "@/lib/data/supabaseClient";
 import * as api from "@/lib/data/api";
 import { PerfectRentBadge } from "@/components/tenant/PerfectRentBadge";
+import { InlineLogo } from "@/components/Logo";
 import type { PropertyWithPhotos } from "@/types/domain";
 
 const TRUST_ITEMS = [
@@ -54,8 +55,9 @@ export function Landing() {
               <span className="text-brand-600">Rent With Confidence.</span>
             </h1>
             <p className="mt-5 max-w-md text-lg text-slate-600">
-              The Perfect10ant helps you build one verified Passport, get matched to homes
-              that fit, and rent with confidence — get verified once, use it everywhere.
+              <InlineLogo className="h-6 w-auto" /> helps you build one verified Passport, get
+              matched to homes that fit, and rent with confidence — get verified once, use it
+              everywhere.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link to="/signup?role=tenant">
@@ -84,7 +86,7 @@ export function Landing() {
                 <p className="text-xs text-slate-200">You're verified and ready to apply.</p>
               </div>
             </div>
-            <Card className="relative mt-6 w-full p-4 shadow-xl lg:absolute lg:-bottom-10 lg:-right-8 lg:mt-0 lg:w-64">
+            <Card className="relative mt-6 w-full p-4 shadow-xl lg:absolute lg:-bottom-10 lg:right-0 lg:mt-0 lg:w-64">
               <p className="font-serif text-sm font-semibold text-ink-900">Your Perfect Rent™</p>
               <p className="mt-0.5 text-[11px] text-slate-400">Example calculation — see your real numbers on any listing</p>
               <div className="mt-3 space-y-1.5 text-sm">

@@ -7,6 +7,7 @@ import { Badge, RentalReadyBadge, VerificationBadge } from "@/components/ui/Badg
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Field";
+import { InlineLogo } from "@/components/Logo";
 import { computeRentalReady, type PropertyWithPhotos } from "@/types/domain";
 
 export function LandlordMarketplace() {
@@ -56,7 +57,9 @@ export function LandlordMarketplace() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="text-2xl font-bold text-slate-900">Find Your Perfect10ant</h1>
+      <h1 className="text-2xl font-bold text-slate-900">
+        Find Your <InlineLogo className="h-7 w-auto" />
+      </h1>
       <p className="mt-1 text-sm text-slate-600">
         Rental Ready, verified tenants actively searching for housing — matched against your listing.
       </p>
