@@ -7,6 +7,7 @@ import {
   computeMonthlyCollectionReport,
   groupPayoutPeriods,
   payoutHistoryToCsv,
+  reconciliationReportToCsv,
   type MonthlyCollectionReport,
   type PayoutPeriod,
 } from "@/lib/perfectPay/reconciliation";
@@ -103,17 +104,25 @@ export function LandlordPayouts() {
 
       <div className="mt-6 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-slate-900">Monthly Collection Report</h2>
-        <select
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-          className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
-        >
-          {months.map((m) => (
-            <option key={m} value={m}>
-              {formatMonth(m)}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
+          >
+            {months.map((m) => (
+              <option key={m} value={m}>
+                {formatMonth(m)}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="secondary"
+            onClick={() => downloadCsv(`perfect-pay-reconciliation-${selectedMonth}.csv`, reconciliationReportToCsv(report))}
+          >
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       <Card className="mt-3 p-5">

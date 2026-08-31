@@ -144,3 +144,20 @@ export function payoutHistoryToCsv(periods: PayoutPeriod[]): string {
   ]);
   return [header, ...rows].map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
 }
+
+export function reconciliationReportToCsv(report: MonthlyCollectionReport): string {
+  const rows: [string, string][] = [
+    ["Month", report.month],
+    ["Rent scheduled", (report.rentScheduledCents / 100).toFixed(2)],
+    ["Rent collected", (report.rentCollectedCents / 100).toFixed(2)],
+    ["Outstanding", (report.outstandingCents / 100).toFixed(2)],
+    ["Failed / disputed payments", String(report.failedPaymentsCount)],
+    ["On-time rate (%)", report.onTimeRatePercent === null ? "" : String(report.onTimeRatePercent)],
+    ["Tenant autopay rate (%)", report.autopayRatePercent === null ? "" : String(report.autopayRatePercent)],
+    ["Landlord-funded incentives (monthly)", (report.landlordFundedIncentiveCents / 100).toFixed(2)],
+    ["Perfect10ant-funded incentives (monthly)", (report.platformFundedIncentiveCents / 100).toFixed(2)],
+    ["Platform fee", (report.feeCents / 100).toFixed(2)],
+    ["Net payout", (report.netPayoutCents / 100).toFixed(2)],
+  ];
+  return rows.map(([label, value]) => `"${label.replace(/"/g, '""')}","${value.replace(/"/g, '""')}"`).join("\n");
+}
