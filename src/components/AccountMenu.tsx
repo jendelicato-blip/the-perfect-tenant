@@ -25,6 +25,7 @@ export function AccountMenu() {
   const [open, setOpen] = useState(false);
   const [tenantSummary, setTenantSummary] = useState<TenantSummary | null>(null);
   const [landlord, setLandlord] = useState<Landlord | null>(null);
+  const [panelStyle, setPanelStyle] = useState<{ top: number; left: number; width: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,17 +47,30 @@ export function AccountMenu() {
   const name = displayNameFromEmail(user.email);
   const initial = name.charAt(0).toUpperCase();
 
+  function toggleOpen() {
+    if (!open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const margin = 12;
+      const width = Math.min(288, window.innerWidth - margin * 2);
+      const left = Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin));
+      setPanelStyle({ top: rect.bottom + 8, left, width });
+    }
+    setOpen((prev) => !prev);
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={toggleOpen}
         className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white transition hover:bg-brand-700"
         aria-label="Account menu"
       >
         {initial}
       </button>
-      {open && (
-        <div className="absolute right-0 z-10 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+      {open && panelStyle && (
+        <div
+          style={{ position: "fixed", top: panelStyle.top, left: panelStyle.left, width: panelStyle.width }}
+          className="z-20 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
           <p className="font-semibold text-ink-900">{name}</p>
           <p className="text-sm text-slate-500">{user.email}</p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
