@@ -115,6 +115,13 @@ export const {
   getPlatformFeeConfig,
   updatePlatformFeeConfig,
   listLandlordTenantAutopayStatus,
+  fileDispute,
+  resolveDispute,
+  listDisputesForTenant,
+  listDisputesForLandlord,
+  issueRefund,
+  listRefundsForTenant,
+  listRefundsForLandlord,
 } = impl;
 
 export type {

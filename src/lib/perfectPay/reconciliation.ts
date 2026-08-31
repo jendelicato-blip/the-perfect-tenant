@@ -1,4 +1,4 @@
-import type { PaymentVerification, PlatformFeeConfig, PropertyWithPhotos, RentIncentive } from "@/types/domain";
+import type { PaymentRefund, PaymentVerification, PlatformFeeConfig, PropertyWithPhotos, RentIncentive } from "@/types/domain";
 
 // Payout history + reconciliation reporting. Everything here is computed
 // from real rows a landlord already legitimately has full access to
@@ -34,6 +34,7 @@ export interface PayoutPeriod {
   propertiesCount: number;
   paymentsCount: number;
   feeCents: number;
+  refundedCents: number;
   netCents: number;
   reference: string;
 }
@@ -43,6 +44,7 @@ export function groupPayoutPeriods(
   propertiesById: Map<string, PropertyWithPhotos>,
   feeConfig: Pick<PlatformFeeConfig, "percent_fee" | "flat_fee_cents" | "fee_payer">,
   landlordId: string,
+  refunds: PaymentRefund[] = [],
 ): PayoutPeriod[] {
   const confirmed = payments.filter((p) => p.status === "on_time" || p.status === "late");
   const byMonth = new Map<string, PaymentVerification[]>();
@@ -50,10 +52,15 @@ export function groupPayoutPeriods(
     const month = p.period_start.slice(0, 7);
     (byMonth.get(month) ?? byMonth.set(month, []).get(month)!).push(p);
   }
+  const refundsByPayment = new Map<string, number>();
+  for (const r of refunds) {
+    refundsByPayment.set(r.payment_verification_id, (refundsByPayment.get(r.payment_verification_id) ?? 0) + r.amount_cents);
+  }
 
   return [...byMonth.entries()]
     .map(([month, monthPayments]) => {
       const grossCents = monthPayments.reduce((sum, p) => sum + (propertiesById.get(p.property_id)?.rent ?? 0) * 100, 0);
+      const refundedCents = monthPayments.reduce((sum, p) => sum + (refundsByPayment.get(p.id) ?? 0), 0);
       const { feeCents, landlordPaysFee } = computeFee(grossCents, feeConfig);
       const latestVerifiedAt = monthPayments.reduce((latest, p) => (p.verified_at > latest ? p.verified_at : latest), monthPayments[0].verified_at);
       return {
@@ -63,7 +70,8 @@ export function groupPayoutPeriods(
         propertiesCount: new Set(monthPayments.map((p) => p.property_id)).size,
         paymentsCount: monthPayments.length,
         feeCents,
-        netCents: grossCents - (landlordPaysFee ? feeCents : 0),
+        refundedCents,
+        netCents: grossCents - (landlordPaysFee ? feeCents : 0) - refundedCents,
         reference: `P10-PO-${month.replace("-", "")}-${landlordId.slice(0, 8).toUpperCase()}`,
       };
     })
@@ -76,11 +84,12 @@ export interface MonthlyCollectionReport {
   rentCollectedCents: number;
   outstandingCents: number;
   failedPaymentsCount: number;
-  autopayRatePercent: number | null;
   onTimeRatePercent: number | null;
+  autopayRatePercent: number | null;
   landlordFundedIncentiveCents: number;
   platformFundedIncentiveCents: number;
   feeCents: number;
+  refundedCents: number;
   netPayoutCents: number;
 }
 
@@ -92,6 +101,7 @@ export function computeMonthlyCollectionReport(input: {
   autopayEnrolledCount: number;
   autopayTotalCount: number;
   feeConfig: Pick<PlatformFeeConfig, "percent_fee" | "flat_fee_cents" | "fee_payer">;
+  refundsThisMonth?: PaymentRefund[];
 }): MonthlyCollectionReport {
   const rentScheduledCents = input.occupiedProperties.reduce((sum, p) => sum + p.rent * 100, 0);
   const confirmed = input.paymentsThisMonth.filter((p) => p.status === "on_time" || p.status === "late");
@@ -102,6 +112,7 @@ export function computeMonthlyCollectionReport(input: {
   const failedPaymentsCount = input.paymentsThisMonth.filter((p) => p.status === "disputed").length;
   const onTimeCount = input.paymentsThisMonth.filter((p) => p.status === "on_time").length;
   const decidedCount = input.paymentsThisMonth.length;
+  const refundedCents = (input.refundsThisMonth ?? []).reduce((sum, r) => sum + r.amount_cents, 0);
 
   let landlordFundedIncentiveCents = 0;
   let platformFundedIncentiveCents = 0;
@@ -121,17 +132,18 @@ export function computeMonthlyCollectionReport(input: {
     rentCollectedCents,
     outstandingCents: Math.max(0, rentScheduledCents - rentCollectedCents),
     failedPaymentsCount,
-    autopayRatePercent: input.autopayTotalCount > 0 ? Math.round((input.autopayEnrolledCount / input.autopayTotalCount) * 100) : null,
     onTimeRatePercent: decidedCount > 0 ? Math.round((onTimeCount / decidedCount) * 100) : null,
+    autopayRatePercent: input.autopayTotalCount > 0 ? Math.round((input.autopayEnrolledCount / input.autopayTotalCount) * 100) : null,
     landlordFundedIncentiveCents,
     platformFundedIncentiveCents,
     feeCents,
-    netPayoutCents: rentCollectedCents - (landlordPaysFee ? feeCents : 0),
+    refundedCents,
+    netPayoutCents: rentCollectedCents - (landlordPaysFee ? feeCents : 0) - refundedCents,
   };
 }
 
 export function payoutHistoryToCsv(periods: PayoutPeriod[]): string {
-  const header = ["Month", "Payout Date", "Gross Amount", "Properties", "Payments", "Fee", "Net Payout", "Reference"];
+  const header = ["Month", "Payout Date", "Gross Amount", "Properties", "Payments", "Fee", "Refunded", "Net Payout", "Reference"];
   const rows = periods.map((p) => [
     p.month,
     p.payoutDate.slice(0, 10),
@@ -139,6 +151,7 @@ export function payoutHistoryToCsv(periods: PayoutPeriod[]): string {
     String(p.propertiesCount),
     String(p.paymentsCount),
     (p.feeCents / 100).toFixed(2),
+    (p.refundedCents / 100).toFixed(2),
     (p.netCents / 100).toFixed(2),
     p.reference,
   ]);
@@ -157,6 +170,7 @@ export function reconciliationReportToCsv(report: MonthlyCollectionReport): stri
     ["Landlord-funded incentives (monthly)", (report.landlordFundedIncentiveCents / 100).toFixed(2)],
     ["Perfect10ant-funded incentives (monthly)", (report.platformFundedIncentiveCents / 100).toFixed(2)],
     ["Platform fee", (report.feeCents / 100).toFixed(2)],
+    ["Refunds issued", (report.refundedCents / 100).toFixed(2)],
     ["Net payout", (report.netPayoutCents / 100).toFixed(2)],
   ];
   return rows.map(([label, value]) => `"${label.replace(/"/g, '""')}","${value.replace(/"/g, '""')}"`).join("\n");

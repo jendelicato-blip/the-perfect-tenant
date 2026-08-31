@@ -10,6 +10,7 @@ import type {
   BackgroundScreening,
   Conversation,
   CreditScreening,
+  Dispute,
   Employment,
   EvictionScreening,
   IdentityVerification,
@@ -24,6 +25,7 @@ import type {
   PartnerOffer,
   PassportShare,
   PassportView,
+  PaymentRefund,
   PaymentVerification,
   PerfectPartner,
   PerfectPayMilestone,
@@ -93,11 +95,13 @@ interface Db {
   adFrequencyRules: AdFrequencyRules;
   landlordPayoutAccounts: LandlordPayoutAccount[];
   platformFeeConfig: PlatformFeeConfig;
+  disputes: Dispute[];
+  paymentRefunds: PaymentRefund[];
   passwords: Record<string, string>;
   currentUserId: string | null;
 }
 
-const STORAGE_KEY = "tpt.devstore.v5";
+const STORAGE_KEY = "tpt.devstore.v6";
 
 function freshDb(): Db {
   return {
@@ -146,6 +150,8 @@ function freshDb(): Db {
     adFrequencyRules: { ...seed.seedAdFrequencyRules },
     landlordPayoutAccounts: [...seed.seedLandlordPayoutAccounts],
     platformFeeConfig: { ...seed.seedPlatformFeeConfig },
+    disputes: [],
+    paymentRefunds: [],
     passwords: { ...seed.seedPasswords },
     currentUserId: null,
   };

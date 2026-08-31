@@ -231,6 +231,29 @@ Incentive totals in the report are the landlord's own configured `rent_incentive
 which incentives applied to a given confirmed payment, so this reports "what's configured," never
 "what was deducted from this specific payout."
 
+### Refunds & disputes: layered on top, never overwriting the landlord's record
+
+`fileDispute`/`resolveDispute`/`issueRefund` (`0009_payment_disputes_refunds.sql`) extend the
+pre-existing but previously-unwired `disputes` table (0001) rather than inventing a parallel one.
+Filing a dispute never touches the underlying `payment_verifications.status` — that column is the
+landlord's own attestation (on_time/late/disputed, set when they confirm a payment); a tenant's
+dispute is a separate row layered on top, so the two can never silently overwrite each other, and
+the UI shows both (e.g. "🟢 Paid on time" + "Dispute open" side by side). `resolveDispute` needed a
+new RLS policy — 0001 only ever let the reporter create and either party read, nobody could change
+status — added scoped to `subject_id = auth.uid()` (the landlord being disputed against).
+
+`payment_refunds` is a new table, but stays on the same "no real money moves" boundary as autopay
+and payouts: issuing one only creates a record that the landlord owes/returned money, tied to a
+specific `payment_verification_id`, funds nothing. It IS wired into the money math everywhere else
+in Perfect Pay, though — `groupPayoutPeriods` and `computeMonthlyCollectionReport` both subtract a
+month's refunds from the net payout figure, so "Payouts & Reconciliation" and a refunded payment's
+own row never disagree with each other about what the landlord actually nets.
+
+"Duplicate payment" and "failed payment" from the build plan's refund/dispute list don't apply the
+way they would with a real processor: `recordPayment` already upserts on the
+`(tenant_id, property_id, period_start)` unique constraint from 0005, so there's no
+webhook-retry/idempotency problem to solve because there's no webhook to retry.
+
 ### Perfect Rewards™: a read-only scorecard, not a new data model
 
 `/rewards` (`Rewards.tsx`) introduces no new source of truth — it composes Rental Ready

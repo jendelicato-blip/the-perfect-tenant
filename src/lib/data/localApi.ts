@@ -16,6 +16,8 @@ import type {
   CampaignStatus,
   CampaignType,
   Conversation,
+  Dispute,
+  DisputeCategory,
   IncentiveType,
   InvitationStatus,
   JurisdictionRule,
@@ -28,6 +30,7 @@ import type {
   PassportShare,
   PassportView,
   PaymentMethodType,
+  PaymentRefund,
   PaymentStatus,
   PaymentVerification,
   PayoutSchedule,
@@ -37,6 +40,7 @@ import type {
   PlatformFeeConfig,
   Property,
   PropertyWithPhotos,
+  RefundType,
   RentIncentive,
   RewardEvent,
   Role,
@@ -783,6 +787,104 @@ export async function listPaymentVerificationsForLandlord(landlordId: string): P
 export async function listPerfectPayMilestones(): Promise<PerfectPayMilestone[]> {
   const db = getDb();
   return db.perfectPayMilestones;
+}
+
+// ---------- Perfect Pay™ disputes & refunds ----------
+//
+// A dispute is the tenant's own disagreement with a landlord-confirmed
+// payment_verifications row — it's layered on top of that row, never
+// overwrites its status (on_time/late/disputed there is the landlord's own
+// attestation). A refund is the landlord's own record that they owe or
+// returned money; like everything else in Perfect Pay, no real money moves.
+
+export async function fileDispute(
+  paymentVerificationId: string,
+  tenantId: string,
+  category: DisputeCategory,
+  reason: string,
+): Promise<Dispute> {
+  return mutate((db) => {
+    const payment = db.paymentVerifications.find((p) => p.id === paymentVerificationId);
+    if (!payment || payment.tenant_id !== tenantId) throw new ApiError("Payment not found.");
+    const dispute: Dispute = {
+      id: newId("dsp"),
+      reporter_id: tenantId,
+      subject_id: payment.landlord_id,
+      reason,
+      status: "open",
+      created_at: new Date().toISOString(),
+      payment_verification_id: paymentVerificationId,
+      category,
+    };
+    db.disputes.push(dispute);
+    notify(db, payment.landlord_id, "payment_dispute_filed", "A tenant disputed a rent payment record.");
+    return dispute;
+  });
+}
+
+export async function resolveDispute(disputeId: string, landlordId: string, resolution: "resolved" | "dismissed"): Promise<void> {
+  mutate((db) => {
+    const dispute = db.disputes.find((d) => d.id === disputeId);
+    if (!dispute || dispute.subject_id !== landlordId) throw new ApiError("Dispute not found.");
+    dispute.status = resolution;
+    notify(
+      db,
+      dispute.reporter_id,
+      "payment_dispute_resolved",
+      resolution === "resolved" ? "Your payment dispute was resolved." : "Your payment dispute was reviewed and dismissed.",
+    );
+  });
+}
+
+export async function listDisputesForTenant(tenantId: string): Promise<Dispute[]> {
+  const db = getDb();
+  return db.disputes.filter((d) => d.reporter_id === tenantId);
+}
+
+export async function listDisputesForLandlord(landlordId: string): Promise<Dispute[]> {
+  const db = getDb();
+  return db.disputes.filter((d) => d.subject_id === landlordId);
+}
+
+export async function issueRefund(
+  paymentVerificationId: string,
+  landlordId: string,
+  amountCents: number,
+  type: RefundType,
+  reason: string,
+): Promise<PaymentRefund> {
+  return mutate((db) => {
+    const payment = db.paymentVerifications.find((p) => p.id === paymentVerificationId);
+    if (!payment || payment.landlord_id !== landlordId) throw new ApiError("Payment not found.");
+    const refund: PaymentRefund = {
+      id: newId("rfd"),
+      payment_verification_id: paymentVerificationId,
+      landlord_id: landlordId,
+      tenant_id: payment.tenant_id,
+      amount_cents: amountCents,
+      type,
+      reason,
+      created_at: new Date().toISOString(),
+    };
+    db.paymentRefunds.push(refund);
+    notify(
+      db,
+      payment.tenant_id,
+      "payment_refund_issued",
+      `You received a ${type === "full" ? "full" : "partial"} refund of $${(amountCents / 100).toLocaleString()}.`,
+    );
+    return refund;
+  });
+}
+
+export async function listRefundsForTenant(tenantId: string): Promise<PaymentRefund[]> {
+  const db = getDb();
+  return db.paymentRefunds.filter((r) => r.tenant_id === tenantId);
+}
+
+export async function listRefundsForLandlord(landlordId: string): Promise<PaymentRefund[]> {
+  const db = getDb();
+  return db.paymentRefunds.filter((r) => r.landlord_id === landlordId);
 }
 
 // The property behind a tenant's most recently approved application — see

@@ -280,6 +280,13 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
   calendar month (payment records are inherently monthly — see the migration/architecture notes).
   Incentive totals shown are "what's configured on your properties," not "what was deducted from
   this tenant's payment," since that attribution isn't recorded anywhere.
+- **Real refund processing / chargebacks / payment disputes with a card network** — a tenant can
+  file a dispute against a landlord-confirmed payment record and a landlord can issue a refund
+  record against it, both fully wired into notifications and the reconciliation numbers, but no
+  money actually moves for either — same boundary as every other Perfect Pay feature. Genuine
+  webhook-driven idempotency/duplicate-payment handling doesn't apply either: `recordPayment`
+  already upserts on a unique constraint, so there's no retry problem without a real webhook to
+  retry from.
 - **Any security-deposit or prepaid-rent feature** — intentionally not built; needs real legal
   review first (see Compliance notes).
 - **Real jurisdiction/compliance data behind the Perfect Rent™ gate** — `jurisdiction_rules` is a

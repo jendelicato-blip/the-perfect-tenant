@@ -274,12 +274,44 @@ export interface AuditLog {
   created_at: string;
 }
 
+export type DisputeCategory = "incorrect_amount" | "not_received" | "duplicate_charge" | "other";
+
+export const DISPUTE_CATEGORY_LABELS: Record<DisputeCategory, string> = {
+  incorrect_amount: "Incorrect amount",
+  not_received: "Payment not received",
+  duplicate_charge: "Duplicate charge",
+  other: "Other",
+};
+
 export interface Dispute {
   id: string;
   reporter_id: string;
   subject_id: string;
   reason: string;
   status: "open" | "reviewing" | "resolved" | "dismissed";
+  created_at: string;
+  // Payment disputes are the only kind this app actually files today — see
+  // fileDispute in the data layer — but both stay nullable so this table
+  // can still carry a non-payment dispute (e.g. a review dispute) later
+  // without another migration.
+  payment_verification_id: string | null;
+  category: DisputeCategory | null;
+}
+
+export type RefundType = "full" | "partial";
+
+// The landlord's own record that they owe or returned money for a
+// previously-confirmed payment — never a real reversed transaction (no
+// payment processor exists yet to actually reverse anything). See the
+// migration comment in 0009_payment_disputes_refunds.sql.
+export interface PaymentRefund {
+  id: string;
+  payment_verification_id: string;
+  landlord_id: string;
+  tenant_id: string;
+  amount_cents: number;
+  type: RefundType;
+  reason: string;
   created_at: string;
 }
 

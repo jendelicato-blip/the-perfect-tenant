@@ -15,6 +15,8 @@ import type {
   CampaignStatus,
   CampaignType,
   Conversation,
+  Dispute,
+  DisputeCategory,
   IncentiveType,
   InvitationStatus,
   JurisdictionRule,
@@ -27,6 +29,7 @@ import type {
   PassportShare,
   PassportView,
   PaymentMethodType,
+  PaymentRefund,
   PaymentStatus,
   PaymentVerification,
   PayoutSchedule,
@@ -36,6 +39,7 @@ import type {
   PlatformFeeConfig,
   Property,
   PropertyWithPhotos,
+  RefundType,
   RentIncentive,
   RewardEvent,
   Role,
@@ -908,6 +912,123 @@ export async function listPerfectPayMilestones(): Promise<PerfectPayMilestone[]>
   const { data, error } = await db.from("perfect_pay_milestones").select("*");
   if (error) throw new ApiError(error.message);
   return (data ?? []) as PerfectPayMilestone[];
+}
+
+// ---------- Perfect Pay™ disputes & refunds ----------
+//
+// A dispute is the tenant's own disagreement with a landlord-confirmed
+// payment_verifications row — layered on top of it, never overwriting its
+// status. A refund is the landlord's own record that they owe or returned
+// money; no real money moves, same as everywhere else in Perfect Pay.
+
+export async function fileDispute(
+  paymentVerificationId: string,
+  tenantId: string,
+  category: DisputeCategory,
+  reason: string,
+): Promise<Dispute> {
+  const db = client();
+  const { data: payment, error: paymentError } = await db
+    .from("payment_verifications")
+    .select("landlord_id, tenant_id")
+    .eq("id", paymentVerificationId)
+    .single();
+  if (paymentError || !payment || payment.tenant_id !== tenantId) throw new ApiError("Payment not found.");
+  const { data, error } = await db
+    .from("disputes")
+    .insert({
+      reporter_id: tenantId,
+      subject_id: payment.landlord_id,
+      reason,
+      status: "open",
+      payment_verification_id: paymentVerificationId,
+      category,
+    })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  await notify(payment.landlord_id, "payment_dispute_filed", "A tenant disputed a rent payment record.");
+  return data as Dispute;
+}
+
+export async function resolveDispute(disputeId: string, landlordId: string, resolution: "resolved" | "dismissed"): Promise<void> {
+  const db = client();
+  const { data: dispute, error } = await db
+    .from("disputes")
+    .update({ status: resolution })
+    .eq("id", disputeId)
+    .eq("subject_id", landlordId)
+    .select()
+    .single();
+  if (error || !dispute) throw new ApiError("Dispute not found.");
+  await notify(
+    dispute.reporter_id,
+    "payment_dispute_resolved",
+    resolution === "resolved" ? "Your payment dispute was resolved." : "Your payment dispute was reviewed and dismissed.",
+  );
+}
+
+export async function listDisputesForTenant(tenantId: string): Promise<Dispute[]> {
+  const db = client();
+  const { data, error } = await db.from("disputes").select("*").eq("reporter_id", tenantId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as Dispute[];
+}
+
+export async function listDisputesForLandlord(landlordId: string): Promise<Dispute[]> {
+  const db = client();
+  const { data, error } = await db.from("disputes").select("*").eq("subject_id", landlordId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as Dispute[];
+}
+
+export async function issueRefund(
+  paymentVerificationId: string,
+  landlordId: string,
+  amountCents: number,
+  type: RefundType,
+  reason: string,
+): Promise<PaymentRefund> {
+  const db = client();
+  const { data: payment, error: paymentError } = await db
+    .from("payment_verifications")
+    .select("landlord_id, tenant_id")
+    .eq("id", paymentVerificationId)
+    .single();
+  if (paymentError || !payment || payment.landlord_id !== landlordId) throw new ApiError("Payment not found.");
+  const { data, error } = await db
+    .from("payment_refunds")
+    .insert({
+      payment_verification_id: paymentVerificationId,
+      landlord_id: landlordId,
+      tenant_id: payment.tenant_id,
+      amount_cents: amountCents,
+      type,
+      reason,
+    })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  await notify(
+    payment.tenant_id,
+    "payment_refund_issued",
+    `You received a ${type === "full" ? "full" : "partial"} refund of $${(amountCents / 100).toLocaleString()}.`,
+  );
+  return data as PaymentRefund;
+}
+
+export async function listRefundsForTenant(tenantId: string): Promise<PaymentRefund[]> {
+  const db = client();
+  const { data, error } = await db.from("payment_refunds").select("*").eq("tenant_id", tenantId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as PaymentRefund[];
+}
+
+export async function listRefundsForLandlord(landlordId: string): Promise<PaymentRefund[]> {
+  const db = client();
+  const { data, error } = await db.from("payment_refunds").select("*").eq("landlord_id", landlordId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as PaymentRefund[];
 }
 
 export async function getCurrentRentalForTenant(tenantId: string): Promise<CurrentRental | null> {

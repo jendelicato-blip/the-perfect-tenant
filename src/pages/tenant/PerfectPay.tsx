@@ -12,6 +12,10 @@ import {
   computeOnTimeStreak,
   computePerfectPayLevel,
   computeRentalReady,
+  DISPUTE_CATEGORY_LABELS,
+  type Dispute,
+  type DisputeCategory,
+  type PaymentRefund,
   type PaymentVerification,
   type PerfectPayLevel,
   type PerfectPayMilestone,
@@ -35,8 +39,104 @@ const PAYMENT_STATUS_META: Record<PaymentVerification["status"], { emoji: string
   disputed: { emoji: "⚠️", label: "Disputed" },
 };
 
+const DISPUTE_STATUS_META: Record<Dispute["status"], { label: string; tone: "default" | "brand" | "success" | "warning" }> = {
+  open: { label: "Dispute open", tone: "warning" },
+  reviewing: { label: "Dispute in review", tone: "warning" },
+  resolved: { label: "Dispute resolved", tone: "success" },
+  dismissed: { label: "Dispute dismissed", tone: "default" },
+};
+
 function levelLabel(level: PerfectPayLevel): string {
   return level[0].toUpperCase() + level.slice(1);
+}
+
+function PaymentDisputeRow({
+  payment,
+  rentDollars,
+  dispute,
+  refund,
+  onFileDispute,
+}: {
+  payment: PaymentVerification;
+  rentDollars: number | null;
+  dispute: Dispute | undefined;
+  refund: PaymentRefund | undefined;
+  onFileDispute: (category: DisputeCategory, reason: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState<DisputeCategory>("incorrect_amount");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit() {
+    if (!reason.trim()) return;
+    setSaving(true);
+    try {
+      await onFileDispute(category, reason.trim());
+      setOpen(false);
+      setReason("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const meta = PAYMENT_STATUS_META[payment.status];
+
+  return (
+    <div className="border-b border-slate-100 py-1.5 last:border-0">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-slate-600">{new Date(payment.period_start).toLocaleDateString(undefined, { year: "numeric", month: "long" })}</span>
+        <div className="flex items-center gap-2">
+          {rentDollars !== null && <span className="text-slate-500">${rentDollars.toLocaleString()}</span>}
+          <Badge tone={payment.status === "on_time" ? "success" : payment.status === "late" ? "warning" : "default"}>
+            {meta.emoji} {meta.label}
+          </Badge>
+          {dispute ? (
+            <Badge tone={DISPUTE_STATUS_META[dispute.status].tone}>{DISPUTE_STATUS_META[dispute.status].label}</Badge>
+          ) : (
+            <button className="text-xs font-medium text-slate-400 hover:text-red-600 hover:underline" onClick={() => setOpen((v) => !v)}>
+              Dispute
+            </button>
+          )}
+        </div>
+      </div>
+      {refund && (
+        <p className="mt-1 text-xs text-brand-700">
+          ↩ {refund.type === "full" ? "Full" : "Partial"} refund of ${(refund.amount_cents / 100).toLocaleString()} — {refund.reason}
+        </p>
+      )}
+      {open && !dispute && (
+        <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as DisputeCategory)}
+            className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
+          >
+            {(Object.keys(DISPUTE_CATEGORY_LABELS) as DisputeCategory[]).map((c) => (
+              <option key={c} value={c}>
+                {DISPUTE_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Tell your landlord what's wrong with this record…"
+            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+            rows={2}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={saving || !reason.trim()} onClick={handleSubmit}>
+              {saving ? "Submitting…" : "Submit dispute"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function TenantPerfectPay() {
@@ -49,6 +149,13 @@ export function TenantPerfectPay() {
   const [payments, setPayments] = useState<PaymentVerification[]>([]);
   const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
   const [events, setEvents] = useState<RewardEvent[]>([]);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [refunds, setRefunds] = useState<PaymentRefund[]>([]);
+
+  function loadDisputesAndRefunds(tenantId: string) {
+    api.listDisputesForTenant(tenantId).then(setDisputes);
+    api.listRefundsForTenant(tenantId).then(setRefunds);
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -57,7 +164,14 @@ export function TenantPerfectPay() {
     api.listPerfectPayMilestones().then(setMilestones);
     api.listRewardEvents(user.id).then(setEvents);
     api.getCurrentRentalForTenant(user.id).then((rental) => setProperty(rental?.property ?? null));
+    loadDisputesAndRefunds(user.id);
   }, [user]);
+
+  async function handleFileDispute(paymentId: string, category: DisputeCategory, reason: string) {
+    if (!user) return;
+    await api.fileDispute(paymentId, user.id, category, reason);
+    loadDisputesAndRefunds(user.id);
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -205,22 +319,20 @@ export function TenantPerfectPay() {
           Every entry here came from a landlord confirming your payment — nothing is marked verified without that
           confirmation.
         </p>
-        <div className="mt-3 space-y-1 text-sm">
+        <div className="mt-3 text-sm">
           {payments.length === 0 && <p className="text-slate-500">No payments recorded yet.</p>}
           {[...payments]
             .sort((a, b) => b.period_start.localeCompare(a.period_start))
-            .map((p) => {
-              const meta = PAYMENT_STATUS_META[p.status];
-              return (
-                <div key={p.id} className="flex items-center justify-between border-b border-slate-100 py-1.5 last:border-0">
-                  <span className="text-slate-600">{new Date(p.period_start).toLocaleDateString(undefined, { year: "numeric", month: "long" })}</span>
-                  {property && <span className="text-slate-500">${property.rent.toLocaleString()}</span>}
-                  <Badge tone={p.status === "on_time" ? "success" : p.status === "late" ? "warning" : "default"}>
-                    {meta.emoji} {meta.label}
-                  </Badge>
-                </div>
-              );
-            })}
+            .map((p) => (
+              <PaymentDisputeRow
+                key={p.id}
+                payment={p}
+                rentDollars={property?.rent ?? null}
+                dispute={disputes.find((d) => d.payment_verification_id === p.id)}
+                refund={refunds.find((r) => r.payment_verification_id === p.id)}
+                onFileDispute={(category, reason) => handleFileDispute(p.id, category, reason)}
+              />
+            ))}
         </div>
       </Card>
 

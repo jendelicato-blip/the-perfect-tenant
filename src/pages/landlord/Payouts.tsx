@@ -11,7 +11,7 @@ import {
   type MonthlyCollectionReport,
   type PayoutPeriod,
 } from "@/lib/perfectPay/reconciliation";
-import type { Application, PaymentVerification, PlatformFeeConfig, PropertyWithPhotos, RentIncentive } from "@/types/domain";
+import type { Application, PaymentRefund, PaymentVerification, PlatformFeeConfig, PropertyWithPhotos, RentIncentive } from "@/types/domain";
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
@@ -38,6 +38,7 @@ export function LandlordPayouts() {
   const [properties, setProperties] = useState<PropertyWithPhotos[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [payments, setPayments] = useState<PaymentVerification[]>([]);
+  const [refunds, setRefunds] = useState<PaymentRefund[]>([]);
   const [incentivesByProperty, setIncentivesByProperty] = useState<Map<string, RentIncentive[]>>(new Map());
   const [feeConfig, setFeeConfig] = useState<PlatformFeeConfig | null>(null);
   const [autopayEnrolled, setAutopayEnrolled] = useState(0);
@@ -48,16 +49,18 @@ export function LandlordPayouts() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const [props, apps, pays, fee, autopay] = await Promise.all([
+      const [props, apps, pays, refs, fee, autopay] = await Promise.all([
         api.listPropertiesForLandlord(user.id),
         api.listApplicationsForLandlord(user.id),
         api.listPaymentVerificationsForLandlord(user.id),
+        api.listRefundsForLandlord(user.id),
         api.getPlatformFeeConfig(),
         api.listLandlordTenantAutopayStatus(user.id),
       ]);
       setProperties(props);
       setApplications(apps);
       setPayments(pays);
+      setRefunds(refs);
       setFeeConfig(fee);
       setAutopayEnrolled(autopay.filter((a) => a.autoPaymentEnrolled).length);
       setAutopayTotal(autopay.length);
@@ -79,9 +82,11 @@ export function LandlordPayouts() {
   const occupiedPropertyIds = new Set(applications.filter((a) => a.status === "approved").map((a) => a.property_id));
   const occupiedProperties = properties.filter((p) => occupiedPropertyIds.has(p.id));
 
-  const payoutPeriods: PayoutPeriod[] = groupPayoutPeriods(payments, propertiesById, feeConfig, user.id);
+  const payoutPeriods: PayoutPeriod[] = groupPayoutPeriods(payments, propertiesById, feeConfig, user.id, refunds);
 
   const paymentsThisMonth = payments.filter((p) => p.period_start.startsWith(selectedMonth));
+  const paymentIdsThisMonth = new Set(paymentsThisMonth.map((p) => p.id));
+  const refundsThisMonth = refunds.filter((r) => paymentIdsThisMonth.has(r.payment_verification_id));
   const report: MonthlyCollectionReport = computeMonthlyCollectionReport({
     month: selectedMonth,
     occupiedProperties,
@@ -90,6 +95,7 @@ export function LandlordPayouts() {
     autopayEnrolledCount: autopayEnrolled,
     autopayTotalCount: autopayTotal,
     feeConfig,
+    refundsThisMonth,
   });
 
   const months = [...new Set(payments.map((p) => p.period_start.slice(0, 7)))].sort().reverse();
@@ -163,6 +169,10 @@ export function LandlordPayouts() {
             <p className="text-xs uppercase tracking-wide text-slate-400">Platform fee</p>
             <p className="mt-1 font-semibold text-ink-900">${(report.feeCents / 100).toLocaleString()}</p>
           </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-400">Refunds issued</p>
+            <p className="mt-1 font-semibold text-ink-900">${(report.refundedCents / 100).toLocaleString()}</p>
+          </div>
         </div>
         <div className="mt-4 flex justify-between border-t border-slate-100 pt-3 text-base font-semibold text-ink-900">
           <span>Net payout</span>
@@ -195,6 +205,7 @@ export function LandlordPayouts() {
               {period.paymentsCount === 1 ? "" : "s"}
             </div>
             <div className="text-slate-600">Fee: ${(period.feeCents / 100).toFixed(2)}</div>
+            {period.refundedCents > 0 && <div className="text-red-600">Refunded: ${(period.refundedCents / 100).toFixed(2)}</div>}
             <div className="font-semibold text-ink-900">${(period.netCents / 100).toLocaleString()}</div>
             <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">✓ Reflects confirmed rent</span>
           </Card>
