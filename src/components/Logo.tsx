@@ -23,7 +23,7 @@ export function Logo({ className = "", markClassName = "h-9 w-9" }: { className?
       <span className="font-serif text-lg font-semibold leading-tight text-ink-900">
         The Perfect
         <br />
-        Tennant
+        <span className="text-brand-600">10</span>ant
       </span>
     </span>
   );

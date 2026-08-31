@@ -188,7 +188,7 @@ export function TenantOnboarding() {
             </FormRow>
           </div>
 
-          <FormRow label="Who can see my Perfect Tennant Passport?">
+          <FormRow label="Who can see my Perfect10ant Passport?">
             <Select value={visibility} onChange={(e) => setVisibility(e.target.value as PassportVisibility)}>
               {VISIBILITY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>

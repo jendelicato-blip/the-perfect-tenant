@@ -58,7 +58,7 @@ export function TenantPassport() {
       await api.notifyOnce(
         user.id,
         "perfect_rent_eligible",
-        "🎉 You've completed your Perfect Tennant Passport — you may now qualify for Perfect Rent™ savings on properties offering a Passport discount.",
+        "🎉 You've completed your Perfect10ant Passport — you may now qualify for Perfect Rent™ savings on properties offering a Passport discount.",
       );
     }
   }
@@ -93,7 +93,7 @@ export function TenantPassport() {
     <div className="mx-auto max-w-2xl px-4 py-10">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Perfect Tennant Passport™</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Perfect10ant Passport™</p>
           <h1 className="text-2xl font-bold text-slate-900">{summary.user.email.split("@")[0]}</h1>
         </div>
         <RentalReadyBadge level={rentalReady.level} />
@@ -135,7 +135,7 @@ export function TenantPassport() {
       </Card>
 
       <Card className="mt-4 p-6">
-        <h2 className="font-semibold text-slate-900">Share My Perfect Tennant Passport</h2>
+        <h2 className="font-semibold text-slate-900">Share My Perfect10ant Passport</h2>
         <p className="mt-1 text-sm text-slate-600">
           You control who can see your Passport. A landlord you apply to or message can already see it —
           use a share link to send it anywhere else.
@@ -163,7 +163,7 @@ export function TenantPassport() {
       </Card>
 
       <Card className="mt-4 p-6">
-        <h2 className="font-semibold text-slate-900">Perfect Tennant Timeline</h2>
+        <h2 className="font-semibold text-slate-900">Perfect10ant Timeline</h2>
         <ol className="mt-3 space-y-2 border-l border-slate-200 pl-4 text-sm text-slate-600">
           {verifiedCategories.length === 0 && <li className="text-slate-400">No milestones yet.</li>}
           {verifiedCategories.map((r) => (

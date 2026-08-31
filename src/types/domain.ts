@@ -276,7 +276,7 @@ export interface Dispute {
   created_at: string;
 }
 
-// ---------- Perfect Tennant Passport™ / two-sided marketplace ----------
+// ---------- Perfect10ant Passport™ / two-sided marketplace ----------
 
 export type InvitationStatus = "sent" | "accepted" | "declined";
 
@@ -448,7 +448,7 @@ export interface PropertyWithPhotos extends Property {
 export type IncentiveType = "passport_verified" | "longer_lease" | "auto_payment" | "rental_history" | "upfront_rent";
 
 export const INCENTIVE_LABELS: Record<IncentiveType, string> = {
-  passport_verified: "Perfect Tennant Passport discount",
+  passport_verified: "Perfect10ant Passport discount",
   longer_lease: "Longer-lease discount",
   auto_payment: "Automatic payment discount",
   rental_history: "Verified rental history discount",

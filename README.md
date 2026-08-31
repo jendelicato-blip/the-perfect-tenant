@@ -1,10 +1,10 @@
-# The Perfect Tennant™ — The Verified Rental Network
+# The Perfect10ant™ — The Verified Rental Network
 
 *"Get verified once. Rent with confidence."* For landlords: *"Stop sorting through applications.
 Find verified tenants."*
 
 A two-sided verified rental network, not just another listings site. Tenants build one reusable,
-portable **Perfect Tennant Passport™** — verification done once, a transparent **Rental Ready**
+portable **Perfect10ant Passport™** — verification done once, a transparent **Rental Ready**
 status, and a rule-based **Perfect Match™** score explaining *why* a property or tenant fits.
 Landlords get a **Tenant Marketplace** to discover Rental Ready tenants directly, not just an
 application inbox. **Perfect Rent™** lets a landlord offer real, lawful rent incentives (Passport
@@ -82,7 +82,7 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
 
 ## What's built
 
-- **Perfect Tennant Passport™** (`/passport`) — the tenant's reusable profile: Rental Ready
+- **Perfect10ant Passport™** (`/passport`) — the tenant's reusable profile: Rental Ready
   status, verification summary, rental preferences, share/revoke access (secure link or a
   specific landlord), a "Recent Passport Activity" view log, and a milestone timeline.
 - **Rental Ready status** (🟢/🟡/🔴, `computeRentalReady` in `src/types/domain.ts`) — always
@@ -95,7 +95,7 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
   Every reason shown is one of those objective facts, matched or not — never a protected
   characteristic.
 - **Two-sided marketplace**: tenants search properties (`/search`, `/matches`); landlords search
-  tenants (`/landlord/marketplace`, "Find Your Perfect Tennant") — tenants control this via a
+  tenants (`/landlord/marketplace`, "Find Your Perfect10ant") — tenants control this via a
   `passport_visibility` setting (marketplace / applied-or-saved-only / private).
 - **Invite to Apply** (landlord → tenant) and **"I'm Interested"** (tenant → landlord) — two
   distinct signals, both surfaced as notifications and in dedicated inboxes
@@ -249,7 +249,7 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
   Admin page ships the underlying metrics and plan editor, not visualizations.
 - **QR code passport sharing** — the share-link and per-landlord grant/revoke flows are built;
   rendering an actual QR code image was cut for scope, not because it's hard to add later.
-- **"Perfect Tennant Protected™"** and other future revenue lines (lease services, rent
+- **"Perfect10ant Protected™"** and other future revenue lines (lease services, rent
   collection, tenant service partnerships) — intentionally not built or implied as existing,
   per the build plan's own instruction not to claim a protection product that doesn't exist yet.
 - **Discriminatory-behavior audit tooling** — `audit_logs` exists in the schema but nothing
@@ -271,7 +271,7 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
 - **Perfect Rent™/Perfect Pay™ analytics visualizations** — the Admin page ships the underlying
   counts (active incentives, average discount, verified-payment tenants, reward events), not
   charts or trends.
-- **A separate third-party advertiser signup role/portal** ("Advertise With The Perfect Tennant"
+- **A separate third-party advertiser signup role/portal** ("Advertise With The Perfect10ant"
   landing page, self-service account creation) — Perfect Partners™ businesses are onboarded by an
   admin in this pass; the only self-service advertising flow built is a landlord promoting their
   own property (`getOrCreateAdvertiserForLandlord` lazily creates the one advertiser row that

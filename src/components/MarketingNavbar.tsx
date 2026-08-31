@@ -40,7 +40,7 @@ export function MarketingNavbar() {
           <NavDropdown
             label="For Landlords"
             items={[
-              { to: "/for-landlords", label: "Why The Perfect Tennant" },
+              { to: "/for-landlords", label: "Why The Perfect10ant" },
               { to: "/signup?role=landlord", label: "Get started" },
             ]}
           />

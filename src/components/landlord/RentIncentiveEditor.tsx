@@ -20,7 +20,7 @@ export const EMPTY_INCENTIVE_FORM: IncentiveFormValue = {
 const INCENTIVE_TYPES: IncentiveType[] = ["passport_verified", "longer_lease", "auto_payment", "rental_history", "upfront_rent"];
 
 const INCENTIVE_HELP: Record<IncentiveType, string> = {
-  passport_verified: "Tenant has completed their Perfect Tennant Passport (Rental Ready).",
+  passport_verified: "Tenant has completed their Perfect10ant Passport (Rental Ready).",
   longer_lease: "Tenant signs a lease at or beyond the length you require below.",
   auto_payment: "Tenant enrolls in an approved automatic rent-payment method.",
   rental_history: "Tenant has a verified prior rental history on their Passport.",

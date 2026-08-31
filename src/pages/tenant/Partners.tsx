@@ -38,7 +38,7 @@ export function Partners() {
       <Card className="mt-6 p-5">
         <h2 className="font-serif text-base font-semibold text-ink-900">Our Advertising Promise</h2>
         <p className="mt-2 text-sm text-slate-600">
-          The Perfect Tennant believes advertising should be useful, relevant, and transparent.
+          The Perfect10ant believes advertising should be useful, relevant, and transparent.
           Sponsored businesses and offers are always clearly labeled. Paying for advertising never
           changes verification results, Perfect Match™ scores, or any objective rental information.
         </p>

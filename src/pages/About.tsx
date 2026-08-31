@@ -6,7 +6,7 @@ export function About() {
       </span>
       <h1 className="mt-4 font-serif text-3xl font-semibold text-ink-900">The Verified Rental Network</h1>
       <p className="mt-4 text-slate-600">
-        Apartments.com helps you find a property. The Perfect Tennant helps you become a verified
+        Apartments.com helps you find a property. The Perfect10ant helps you become a verified
         renter — one Passport, reusable across every property you apply to. Landlords get verified
         rental prospects instead of a stack of applications to sort through by hand.
       </p>

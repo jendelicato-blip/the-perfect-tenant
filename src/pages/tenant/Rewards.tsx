@@ -95,7 +95,7 @@ export function TenantRewards() {
 
       <Card className="mt-6 p-6">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-ink-900">Your Perfect Tennant Status</h2>
+          <h2 className="font-semibold text-ink-900">Your Perfect10ant Status</h2>
           <RentalReadyBadge level={rentalReady.level} />
         </div>
         <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">

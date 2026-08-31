@@ -1,4 +1,4 @@
--- The Perfect Tennant™ — Passport, marketplace, verification, and billing extensions.
+-- The Perfect10ant™ — Passport, marketplace, verification, and billing extensions.
 -- Additive to 0001_init.sql; nothing here removes or narrows existing access.
 
 -- ---------- Landlord verification ----------

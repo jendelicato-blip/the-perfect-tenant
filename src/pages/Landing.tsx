@@ -8,14 +8,14 @@ import { PerfectRentBadge } from "@/components/tenant/PerfectRentBadge";
 import type { PropertyWithPhotos } from "@/types/domain";
 
 const TRUST_ITEMS = [
-  { icon: "🛡️", title: "Verified Tenants", body: "Stand out with a verified Perfect Tennant Passport™." },
+  { icon: "🛡️", title: "Verified Tenants", body: "Stand out with a verified Perfect10ant Passport™." },
   { icon: "🎯", title: "Perfect Match™", body: "Get matched to homes that fit your budget and needs." },
   { icon: "🤝", title: "Two-Sided Trust", body: "Landlords are verified too — know who you're renting from." },
   { icon: "🏢", title: "Trusted by Landlords", body: "Connect with landlords who value verified tenants." },
 ];
 
 const STEPS = [
-  { icon: "👤", title: "Create Your Profile", body: "Build your Perfect Tennant Passport™ in minutes." },
+  { icon: "👤", title: "Create Your Profile", body: "Build your Perfect10ant Passport™ in minutes." },
   { icon: "🛡️", title: "Get Verified", body: "Complete verification once so landlords can trust you." },
   { icon: "🏠", title: "Find Your Home", body: "Browse listings with your Perfect Match™ score." },
   { icon: "✅", title: "Rent With Confidence", body: "Apply with your Passport — no starting over." },
@@ -54,7 +54,7 @@ export function Landing() {
               <span className="text-brand-600">Rent With Confidence.</span>
             </h1>
             <p className="mt-5 max-w-md text-lg text-slate-600">
-              The Perfect Tennant helps you build one verified Passport, get matched to homes
+              The Perfect10ant helps you build one verified Passport, get matched to homes
               that fit, and rent with confidence — get verified once, use it everywhere.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
@@ -93,7 +93,7 @@ export function Landing() {
                   <span>$2,000/mo</span>
                 </div>
                 <div className="flex justify-between text-brand-600">
-                  <span>Perfect Tennant Savings</span>
+                  <span>Perfect10ant Savings</span>
                   <span>-$100/mo</span>
                 </div>
                 <div className="flex justify-between border-t border-slate-100 pt-1.5 font-semibold text-ink-900">
@@ -147,7 +147,7 @@ export function Landing() {
             </Link>
 
             <Card className="mt-10 p-6">
-              <h3 className="font-serif text-lg font-semibold text-ink-900">The Perfect Tennant Passport™</h3>
+              <h3 className="font-serif text-lg font-semibold text-ink-900">The Perfect10ant Passport™</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div>
                   <p className="font-medium text-slate-800">Sarah Miller</p>

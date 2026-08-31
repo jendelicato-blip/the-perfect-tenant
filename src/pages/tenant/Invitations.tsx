@@ -33,7 +33,7 @@ export function TenantInvitations() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-2xl font-bold text-slate-900">Landlord Interest</h1>
-      <p className="mt-1 text-sm text-slate-600">Landlords who invited you to apply based on your Perfect Tennant Passport.</p>
+      <p className="mt-1 text-sm text-slate-600">Landlords who invited you to apply based on your Perfect10ant Passport.</p>
 
       <div className="mt-6 space-y-4">
         {invitations.length === 0 && <p className="text-sm text-slate-500">No landlord interest yet.</p>}
@@ -43,7 +43,7 @@ export function TenantInvitations() {
             <Card key={inv.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-medium text-slate-900">A landlord is interested in your Perfect Tennant Passport.</p>
+                  <p className="font-medium text-slate-900">A landlord is interested in your Perfect10ant Passport.</p>
                   {property && (
                     <p className="mt-1 text-sm text-slate-600">
                       {property.address} · ${property.rent.toLocaleString()}/mo · {property.city}, {property.state}
