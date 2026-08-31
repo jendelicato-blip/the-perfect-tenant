@@ -110,12 +110,24 @@ export function TenantPassport() {
             View Verification Center
           </Link>
         </div>
-        <ul className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600">
-          {REQUIRED_VERIFICATIONS.map((r) => (
-            <li key={r.key}>
-              {summary.verification[r.key] === "verified" ? "✓" : "○"} {r.label.replace(/^./, (c) => c.toUpperCase())}
-            </li>
-          ))}
+        <ul className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          {REQUIRED_VERIFICATIONS.map((r) => {
+            const verified = summary.verification[r.key] === "verified";
+            return (
+              <li key={r.key} className="flex items-center gap-2">
+                {verified ? (
+                  <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
+                    ✓
+                  </span>
+                ) : (
+                  <span className="h-5 w-5 flex-none rounded-full border-2 border-slate-300" />
+                )}
+                <span className={verified ? "font-medium text-slate-900" : "text-slate-500"}>
+                  {r.label.replace(/^./, (c) => c.toUpperCase())}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </Card>
 
