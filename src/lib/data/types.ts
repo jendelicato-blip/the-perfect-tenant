@@ -67,4 +67,26 @@ export interface AdminMetrics {
   verifiedPaymentTenants: number;
   totalOnTimePayments: number;
   rewardEventsCount: number;
+  activeCampaignsCount: number;
+  pendingReviewCampaignsCount: number;
+  perfectPartnersCount: number;
+  partnerOfferRedemptionsCount: number;
+}
+
+// Impressions/clicks are anonymous counters (see 0006_perfect_partners.sql)
+// — this is what a landlord's "Your Property Promotion" tile and the admin
+// campaign review queue both read, computed from real rows, never invented.
+export interface CampaignMetrics {
+  impressions: number;
+  clicks: number;
+  leads: number;
+  applications: number;
+}
+
+export interface AdvertisingRevenue {
+  todayCents: number;
+  weekCents: number;
+  monthCents: number;
+  yearCents: number;
+  totalCents: number;
 }

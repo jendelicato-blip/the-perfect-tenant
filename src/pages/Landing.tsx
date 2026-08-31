@@ -215,10 +215,16 @@ export function Landing() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Coming soon
+                Sponsored
               </span>
-              <p className="mt-2 font-serif text-base font-semibold text-ink-900">Renter's Insurance, Made Simple</p>
-              <p className="mt-1 text-sm text-slate-600">Exclusive partner discounts for Perfect Tennant members.</p>
+              <p className="mt-2 font-serif text-base font-semibold text-ink-900">Perfect Partners™</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Helpful, clearly-labeled offers for moving, insurance, and more — useful, relevant,
+                never overwhelming.
+              </p>
+              <Link to="/partners" className="mt-2 inline-block text-sm font-medium text-brand-700 hover:underline">
+                See Perfect Partners™ →
+              </Link>
             </div>
           </div>
         </div>

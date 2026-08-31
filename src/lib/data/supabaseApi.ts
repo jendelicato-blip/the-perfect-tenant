@@ -6,8 +6,14 @@
 // file just shapes requests/responses to match the domain types.
 
 import type {
+  AdCampaign,
+  AdFrequencyRules,
+  AdPackage,
+  Advertiser,
   Application,
   ApplicationStatus,
+  CampaignStatus,
+  CampaignType,
   Conversation,
   IncentiveType,
   InvitationStatus,
@@ -15,10 +21,13 @@ import type {
   LandlordReview,
   Message,
   Notification,
+  OfferRedemption,
+  PartnerOffer,
   PassportShare,
   PassportView,
   PaymentStatus,
   PaymentVerification,
+  PerfectPartner,
   PerfectPayLevel,
   PerfectPayMilestone,
   Property,
@@ -43,7 +52,9 @@ import { supabase } from "./supabaseClient";
 import {
   ApiError,
   type AdminMetrics,
+  type AdvertisingRevenue,
   type AuthUser,
+  type CampaignMetrics,
   type MarketplaceTenant,
   type NewLandlordReview,
   type NewProperty,
@@ -892,6 +903,229 @@ export async function listRewardEvents(tenantId: string): Promise<RewardEvent[]>
   return (data ?? []) as RewardEvent[];
 }
 
+// ---------- Perfect Partners™ (advertising & monetization) ----------
+// Money changes visibility only — nothing here ever writes to
+// tenant_matches or reads scoreMatch's inputs. See src/lib/perfectPartners/engine.ts.
+
+export async function getAdFrequencyRules(): Promise<AdFrequencyRules> {
+  const db = client();
+  const { data, error } = await db.from("ad_frequency_rules").select("*").eq("id", 1).single();
+  if (error) throw new ApiError(error.message);
+  return data as AdFrequencyRules;
+}
+
+export async function updateAdFrequencyRules(patch: Partial<AdFrequencyRules>): Promise<void> {
+  const db = client();
+  await db.from("ad_frequency_rules").update(patch).eq("id", 1);
+}
+
+// Approved + currently date-active sponsored_property campaigns — RLS
+// (ad_campaigns_public_read_active) already restricts this to exactly that
+// set for any caller, so no extra filtering is needed here.
+export async function listActiveSponsoredPropertyCampaigns(): Promise<AdCampaign[]> {
+  const db = client();
+  const { data, error } = await db.from("ad_campaigns").select("*").eq("campaign_type", "sponsored_property").eq("status", "approved");
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as AdCampaign[];
+}
+
+export async function listPerfectPartners(onlyActive = true): Promise<PerfectPartner[]> {
+  const db = client();
+  let query = db.from("perfect_partners").select("*");
+  if (onlyActive) query = query.eq("active", true);
+  const { data, error } = await query.order("sort_order", { ascending: true });
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as PerfectPartner[];
+}
+
+export async function listPartnerOffers(partnerId?: string, onlyActive = true): Promise<PartnerOffer[]> {
+  const db = client();
+  let query = db.from("partner_offers").select("*");
+  if (partnerId) query = query.eq("partner_id", partnerId);
+  if (onlyActive) query = query.eq("active", true);
+  const { data, error } = await query;
+  if (error) throw new ApiError(error.message);
+  const now = Date.now();
+  return ((data ?? []) as PartnerOffer[]).filter((o) => !onlyActive || !o.expires_at || new Date(o.expires_at).getTime() >= now);
+}
+
+export async function recordAdImpression(kind: "campaign" | "offer", id: string, placement: string): Promise<void> {
+  const db = client();
+  await db.from("ad_impressions").insert({ campaign_id: kind === "campaign" ? id : null, offer_id: kind === "offer" ? id : null, placement });
+}
+
+export async function recordAdClick(kind: "campaign" | "offer", id: string, placement: string): Promise<void> {
+  const db = client();
+  await db.from("ad_clicks").insert({ campaign_id: kind === "campaign" ? id : null, offer_id: kind === "offer" ? id : null, placement });
+}
+
+export async function redeemPartnerOffer(tenantId: string, offerId: string): Promise<OfferRedemption> {
+  const db = client();
+  const { data: existing } = await db.from("offer_redemptions").select("*").eq("offer_id", offerId).eq("tenant_id", tenantId).maybeSingle();
+  if (existing) return existing as OfferRedemption;
+  await recordAdClick("offer", offerId, "partner_offer");
+  const { data, error } = await db.from("offer_redemptions").insert({ offer_id: offerId, tenant_id: tenantId }).select().single();
+  if (error) throw new ApiError(error.message);
+  return data as OfferRedemption;
+}
+
+// ---------- Landlord: promote a property (Sponsored Property) ----------
+
+export async function listAdPackages(campaignType?: CampaignType, onlyActive = true): Promise<AdPackage[]> {
+  const db = client();
+  let query = db.from("ad_packages").select("*");
+  if (campaignType) query = query.eq("campaign_type", campaignType);
+  if (onlyActive) query = query.eq("active", true);
+  const { data, error } = await query.order("sort_order", { ascending: true });
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as AdPackage[];
+}
+
+// Lazily creates the one advertiser row a landlord needs to self-promote —
+// there's no separate third-party advertiser signup flow in this pass.
+export async function getOrCreateAdvertiserForLandlord(landlordId: string): Promise<Advertiser> {
+  const db = client();
+  const { data: existing } = await db.from("advertisers").select("*").eq("owner_landlord_id", landlordId).maybeSingle();
+  if (existing) return existing as Advertiser;
+  const { data: landlord } = await db.from("landlords").select("company_name").eq("user_id", landlordId).maybeSingle();
+  const { data, error } = await db
+    .from("advertisers")
+    .insert({ name: landlord?.company_name ?? "Landlord promotion", category: "real_estate", owner_landlord_id: landlordId })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  return data as Advertiser;
+}
+
+export async function createSponsoredPropertyCampaign(landlordId: string, propertyId: string, packageId: string): Promise<AdCampaign> {
+  const advertiser = await getOrCreateAdvertiserForLandlord(landlordId);
+  const db = client();
+  const { data: property } = await db.from("properties").select("address, city, state, zip").eq("id", propertyId).maybeSingle();
+  const { data, error } = await db
+    .from("ad_campaigns")
+    .insert({
+      advertiser_id: advertiser.id,
+      campaign_type: "sponsored_property",
+      status: "pending_review",
+      property_id: propertyId,
+      landlord_id: landlordId,
+      package_id: packageId,
+      target_city: property?.city ?? null,
+      target_state: property?.state ?? null,
+      target_zip: property?.zip ?? null,
+      headline: property?.address ?? "Sponsored listing",
+      cta_label: "View Listing",
+    })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  return data as AdCampaign;
+}
+
+export async function listCampaignsForLandlord(landlordId: string): Promise<AdCampaign[]> {
+  const db = client();
+  const { data, error } = await db.from("ad_campaigns").select("*").eq("landlord_id", landlordId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as AdCampaign[];
+}
+
+export async function getCampaignMetrics(campaignId: string): Promise<CampaignMetrics> {
+  const db = client();
+  const [impressions, clicks, campaign] = await Promise.all([
+    db.from("ad_impressions").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId),
+    db.from("ad_clicks").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId),
+    db.from("ad_campaigns").select("property_id").eq("id", campaignId).maybeSingle(),
+  ]);
+  let applications = 0;
+  if (campaign.data?.property_id) {
+    const { count } = await db.from("applications").select("id", { count: "exact", head: true }).eq("property_id", campaign.data.property_id);
+    applications = count ?? 0;
+  }
+  return { impressions: impressions.count ?? 0, clicks: clicks.count ?? 0, leads: clicks.count ?? 0, applications };
+}
+
+// ---------- Admin: Perfect Partners™ management ----------
+
+export async function listCampaignsForReview(status?: CampaignStatus): Promise<AdCampaign[]> {
+  const db = client();
+  let query = db.from("ad_campaigns").select("*");
+  if (status) query = query.eq("status", status);
+  const { data, error } = await query;
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as AdCampaign[];
+}
+
+// Approving a paid (package_id set) campaign records a real
+// ad_revenue_events row from the package's real configured price — never a
+// fabricated number — and sets a real starts_at/ends_at window from the
+// package's duration. No card is ever charged (see README).
+export async function reviewCampaign(campaignId: string, decision: "approved" | "rejected", rejectionReason?: string): Promise<void> {
+  const db = client();
+  const now = new Date();
+  if (decision === "rejected") {
+    await db.from("ad_campaigns").update({ status: "rejected", reviewed_at: now.toISOString(), rejection_reason: rejectionReason ?? null }).eq("id", campaignId);
+    return;
+  }
+  const { data: campaign } = await db.from("ad_campaigns").select("package_id").eq("id", campaignId).maybeSingle();
+  const pkg = campaign?.package_id ? (await db.from("ad_packages").select("*").eq("id", campaign.package_id).maybeSingle()).data : null;
+  const endsAt = pkg ? new Date(now.getTime() + pkg.duration_days * 24 * 60 * 60 * 1000).toISOString() : null;
+  await db.from("ad_campaigns").update({ status: "approved", reviewed_at: now.toISOString(), rejection_reason: null, starts_at: now.toISOString(), ends_at: endsAt }).eq("id", campaignId);
+  if (pkg) {
+    await db.from("ad_revenue_events").insert({ campaign_id: campaignId, amount_cents: pkg.price_cents });
+  }
+}
+
+export async function setCampaignStatus(campaignId: string, status: CampaignStatus): Promise<void> {
+  const db = client();
+  await db.from("ad_campaigns").update({ status }).eq("id", campaignId);
+}
+
+export async function updateAdPackage(id: string, patch: Partial<Pick<AdPackage, "name" | "duration_days" | "price_cents" | "active">>): Promise<void> {
+  const db = client();
+  await db.from("ad_packages").update(patch).eq("id", id);
+}
+
+export async function createPerfectPartner(input: Omit<PerfectPartner, "id">): Promise<PerfectPartner> {
+  const db = client();
+  const { data, error } = await db.from("perfect_partners").insert(input).select().single();
+  if (error) throw new ApiError(error.message);
+  return data as PerfectPartner;
+}
+
+export async function updatePerfectPartner(id: string, patch: Partial<Omit<PerfectPartner, "id">>): Promise<void> {
+  const db = client();
+  await db.from("perfect_partners").update(patch).eq("id", id);
+}
+
+export async function createPartnerOffer(input: Omit<PartnerOffer, "id">): Promise<PartnerOffer> {
+  const db = client();
+  const { data, error } = await db.from("partner_offers").insert(input).select().single();
+  if (error) throw new ApiError(error.message);
+  return data as PartnerOffer;
+}
+
+export async function updatePartnerOffer(id: string, patch: Partial<Omit<PartnerOffer, "id">>): Promise<void> {
+  const db = client();
+  await db.from("partner_offers").update(patch).eq("id", id);
+}
+
+export async function getAdvertisingRevenue(): Promise<AdvertisingRevenue> {
+  const db = client();
+  const { data, error } = await db.from("ad_revenue_events").select("amount_cents, created_at");
+  if (error) throw new ApiError(error.message);
+  const rows = (data ?? []) as { amount_cents: number; created_at: string }[];
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const sumSince = (cutoffMs: number) => rows.filter((r) => new Date(r.created_at).getTime() >= cutoffMs).reduce((sum, r) => sum + r.amount_cents, 0);
+  return {
+    todayCents: sumSince(now - day),
+    weekCents: sumSince(now - 7 * day),
+    monthCents: sumSince(now - 30 * day),
+    yearCents: sumSince(now - 365 * day),
+    totalCents: rows.reduce((sum, r) => sum + r.amount_cents, 0),
+  };
+}
+
 // ---------- Admin ----------
 // Reads here rely on RLS same as everywhere else — a non-admin caller simply
 // gets zero rows back from subscription_plans writes (blocked) and reduced
@@ -940,6 +1174,21 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   const totalOnTimePayments = paymentRows.filter((p) => p.status === "on_time").length;
   const { count: rewardEventsCount } = await db.from("reward_events").select("id", { count: "exact", head: true });
 
+  const [campaigns, partnersCount, redemptionsCount] = await Promise.all([
+    db.from("ad_campaigns").select("status, starts_at, ends_at"),
+    db.from("perfect_partners").select("id", { count: "exact", head: true }).eq("active", true),
+    db.from("offer_redemptions").select("id", { count: "exact", head: true }),
+  ]);
+  const nowMs = Date.now();
+  const campaignRows = (campaigns.data ?? []) as { status: string; starts_at: string | null; ends_at: string | null }[];
+  const activeCampaignsCount = campaignRows.filter(
+    (c) =>
+      c.status === "approved" &&
+      (!c.starts_at || new Date(c.starts_at).getTime() <= nowMs) &&
+      (!c.ends_at || new Date(c.ends_at).getTime() >= nowMs),
+  ).length;
+  const pendingReviewCampaignsCount = campaignRows.filter((c) => c.status === "pending_review").length;
+
   return {
     totalTenants: tenants.count ?? 0,
     rentalReadyTenants,
@@ -955,6 +1204,10 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     verifiedPaymentTenants,
     totalOnTimePayments,
     rewardEventsCount: rewardEventsCount ?? 0,
+    activeCampaignsCount,
+    pendingReviewCampaignsCount,
+    perfectPartnersCount: partnersCount.count ?? 0,
+    partnerOfferRedemptionsCount: redemptionsCount.count ?? 0,
   };
 }
 

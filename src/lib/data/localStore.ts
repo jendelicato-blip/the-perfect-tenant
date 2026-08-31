@@ -1,4 +1,11 @@
 import type {
+  AdCampaign,
+  AdClick,
+  AdFrequencyRules,
+  AdImpression,
+  AdPackage,
+  AdRevenueEvent,
+  Advertiser,
   Application,
   BackgroundScreening,
   Conversation,
@@ -12,9 +19,12 @@ import type {
   LandlordReview,
   Message,
   Notification,
+  OfferRedemption,
+  PartnerOffer,
   PassportShare,
   PassportView,
   PaymentVerification,
+  PerfectPartner,
   PerfectPayMilestone,
   Property,
   PropertyPhoto,
@@ -69,11 +79,21 @@ interface Db {
   perfectPayMilestones: PerfectPayMilestone[];
   rewardEvents: RewardEvent[];
   notifications: Notification[];
+  advertisers: Advertiser[];
+  adPackages: AdPackage[];
+  adCampaigns: AdCampaign[];
+  perfectPartners: PerfectPartner[];
+  partnerOffers: PartnerOffer[];
+  offerRedemptions: OfferRedemption[];
+  adImpressions: AdImpression[];
+  adClicks: AdClick[];
+  adRevenueEvents: AdRevenueEvent[];
+  adFrequencyRules: AdFrequencyRules;
   passwords: Record<string, string>;
   currentUserId: string | null;
 }
 
-const STORAGE_KEY = "tpt.devstore.v3";
+const STORAGE_KEY = "tpt.devstore.v4";
 
 function freshDb(): Db {
   return {
@@ -110,6 +130,16 @@ function freshDb(): Db {
     perfectPayMilestones: [...seed.seedPerfectPayMilestones],
     rewardEvents: [...seed.seedRewardEvents],
     notifications: [],
+    advertisers: [...seed.seedAdvertisers],
+    adPackages: [...seed.seedAdPackages],
+    adCampaigns: [...seed.seedAdCampaigns],
+    perfectPartners: [...seed.seedPerfectPartners],
+    partnerOffers: [...seed.seedPartnerOffers],
+    offerRedemptions: [],
+    adImpressions: [],
+    adClicks: [],
+    adRevenueEvents: [...seed.seedAdRevenueEvents],
+    adFrequencyRules: { ...seed.seedAdFrequencyRules },
     passwords: { ...seed.seedPasswords },
     currentUserId: null,
   };

@@ -1,4 +1,9 @@
 import type {
+  AdCampaign,
+  AdFrequencyRules,
+  AdPackage,
+  AdRevenueEvent,
+  Advertiser,
   Application,
   BackgroundScreening,
   Conversation,
@@ -11,9 +16,11 @@ import type {
   Landlord,
   LandlordReview,
   Message,
+  PartnerOffer,
   PassportShare,
   PassportView,
   PaymentVerification,
+  PerfectPartner,
   PerfectPayMilestone,
   Property,
   PropertyPhoto,
@@ -248,6 +255,70 @@ export const seedPerfectPayMilestones: PerfectPayMilestone[] = [
 export const seedRewardEvents: RewardEvent[] = [
   { id: "rw-1", tenant_id: "u-tenant-1", type: "perfect_pay_milestone", body: "🏆 Perfect Pay milestone! You've completed 6 verified on-time rent payments — Perfect Pay Bronze achieved.", created_at: "2026-08-02T00:00:00Z" },
 ];
+
+// ---------- Perfect Partners™ (advertising & monetization) ----------
+//
+// "Example ___" naming below is deliberate: these are placeholder demo
+// entries (same spirit as the rest of this app's seed data — Amara, Priya,
+// etc. are fictional too) so the advertising UI has something real to
+// render, not a claim that an actual partnership with these businesses
+// exists. Replace with real reviewed partnerships before production use.
+
+export const seedAdvertisers: Advertiser[] = [
+  // Marcus self-promoting his own property — the only "advertiser" in this
+  // pass created through the landlord-facing product, not by an admin.
+  { id: "adv-1", name: "Marcus Rentals LLC", category: "real_estate", website: null, contact_email: null, owner_landlord_id: "u-landlord-2", verified_business: false, verified_at: null, created_at: "2026-08-19T00:00:00Z" },
+  { id: "adv-2", name: "Example Moving Co.", category: "moving", website: null, contact_email: null, owner_landlord_id: null, verified_business: true, verified_at: "2026-07-01T00:00:00Z", created_at: "2026-07-01T00:00:00Z" },
+  { id: "adv-3", name: "Example Renters Insurance Co.", category: "financial_insurance", website: null, contact_email: null, owner_landlord_id: null, verified_business: true, verified_at: "2026-07-01T00:00:00Z", created_at: "2026-07-01T00:00:00Z" },
+  { id: "adv-4", name: "Example Internet Co.", category: "utilities", website: null, contact_email: null, owner_landlord_id: null, verified_business: false, verified_at: null, created_at: "2026-07-01T00:00:00Z" },
+];
+
+export const seedAdPackages: AdPackage[] = [
+  { id: "pkg-1", name: "7-Day Boost", campaign_type: "sponsored_property", duration_days: 7, price_cents: 999, active: true, sort_order: 0 },
+  { id: "pkg-2", name: "14-Day Featured", campaign_type: "sponsored_property", duration_days: 14, price_cents: 1999, active: true, sort_order: 1 },
+  { id: "pkg-3", name: "30-Day Featured", campaign_type: "sponsored_property", duration_days: 30, price_cents: 2999, active: true, sort_order: 2 },
+  { id: "pkg-4", name: "Premium Featured", campaign_type: "sponsored_property", duration_days: 30, price_cents: 4999, active: true, sort_order: 3 },
+];
+
+// One demo sponsored-property campaign, already approved, so the search/
+// matches "⭐ Sponsored" placement has something real to demonstrate.
+// Currently active as of the seeded "today" (2026-08-30): starts 2026-08-20,
+// 14-Day Featured package ends 2026-09-03.
+export const seedAdCampaigns: AdCampaign[] = [
+  {
+    id: "camp-1", advertiser_id: "adv-1", campaign_type: "sponsored_property", status: "approved",
+    property_id: "p-4", landlord_id: "u-landlord-2", package_id: "pkg-2",
+    target_city: "Papillion", target_state: "NE", target_zip: "68046", target_radius_miles: null,
+    headline: "Modern townhouse with community pool", description: null, offer_text: null,
+    cta_label: "View Listing", destination_url: null, image_url: null,
+    starts_at: "2026-08-20T00:00:00Z", ends_at: "2026-09-03T00:00:00Z", rejection_reason: null,
+    created_at: "2026-08-19T00:00:00Z", reviewed_at: "2026-08-20T00:00:00Z",
+  },
+];
+
+export const seedPerfectPartners: PerfectPartner[] = [
+  { id: "pp-1", advertiser_id: "adv-2", category: "moving", name: "Example Moving Co.", emoji: "🚚", tagline: "Move into your new home for less.", active: true, sort_order: 0 },
+  { id: "pp-2", advertiser_id: "adv-3", category: "financial_insurance", name: "Example Renters Insurance Co.", emoji: "🛡️", tagline: "Protect your new home.", active: true, sort_order: 1 },
+  { id: "pp-3", advertiser_id: "adv-4", category: "utilities", name: "Example Internet Co.", emoji: "📡", tagline: "Moving soon? See available offers.", active: true, sort_order: 2 },
+];
+
+export const seedPartnerOffers: PartnerOffer[] = [
+  { id: "po-1", partner_id: "pp-1", title: "Moving Special", description: "Save on your move with a participating mover.", offer_text: "$50 off a qualifying move", promo_code: "PERFECT50", cta_label: "Get Offer", destination_url: null, expires_at: "2026-12-31T00:00:00Z", active: true },
+  { id: "po-2", partner_id: "pp-2", title: "Renters Insurance", description: "Compare coverage from participating providers.", offer_text: "Free quote + special new-renter pricing", promo_code: null, cta_label: "Get a Quote", destination_url: null, expires_at: null, active: true },
+  { id: "po-3", partner_id: "pp-3", title: "New-Home Internet Offer", description: "See available internet offers in your area.", offer_text: "Special new-home pricing", promo_code: null, cta_label: "View Offers", destination_url: null, expires_at: null, active: true },
+];
+
+// A real event tied to camp-1's real approval and pkg-2's real configured
+// price — never an invented number (see getAdvertisingRevenue).
+export const seedAdRevenueEvents: AdRevenueEvent[] = [
+  { id: "rev-1", campaign_id: "camp-1", amount_cents: 1999, created_at: "2026-08-20T00:00:00Z" },
+];
+
+export const seedAdFrequencyRules: AdFrequencyRules = {
+  max_sponsored_properties_per_page: 1,
+  max_partner_cards_per_page: 2,
+  ads_enabled: true,
+};
 
 // Dev-mode only: plaintext passwords for the seeded demo accounts.
 // Never do this against a real backend — Supabase Auth handles hashing there.

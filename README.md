@@ -10,7 +10,10 @@ Landlords get a **Tenant Marketplace** to discover Rental Ready tenants directly
 application inbox. **Perfect Rent™** lets a landlord offer real, lawful rent incentives (Passport
 verification, longer lease, auto-pay, verified rental history) and a tenant see their actual
 current quote — never a guess. **Perfect Pay™** turns landlord-confirmed on-time payments into a
-real, portable streak/level. **Perfect Rewards™** rolls all of it into one scorecard.
+real, portable streak/level. **Perfect Rewards™** rolls all of it into one scorecard. **Perfect
+Partners™** is the platform's advertising/monetization layer — small, clearly-labeled sponsored
+listings and partner offers that never touch a Perfect Match™ score, built to stay "useful,
+relevant, never overwhelming" rather than an ad-covered classifieds site.
 
 This is a **Phase 1 (core marketplace)** build: manual/placeholder verification statuses only —
 no live identity/credit/background provider is wired up yet (see Phase 2 in the original build
@@ -129,6 +132,29 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
   plus professional (non-gamified) achievement badges and clearly-labeled "Coming Soon" future
   partner categories (Financial, Insurance, Moving, Home Services, Utilities) with no fake partner
   offers behind them.
+- **Perfect Partners™** (`/partners`, `src/lib/perfectPartners/engine.ts`) — the platform's
+  advertising/monetization layer, built around one rule enforced structurally, not by convention:
+  **paid placement can change visibility, never the Perfect Match™ score.**
+  - **Sponsored Property**: a landlord picks an admin-priced package (7-Day Boost/14-Day
+    Featured/30-Day Featured/Premium Featured, editable at `/admin`, never hard-coded) from their
+    property's edit page ("⭐ Sponsored Property"); the campaign goes to `pending_review` and only
+    an admin approval makes it live. A live sponsored property gets promoted to a more prominent
+    slot in `/matches`, always labeled "⭐ Sponsored" and always showing its real, unmodified
+    match score — `interleaveSponsoredProperties()` only ever repositions an already-scored
+    result, it never recomputes or overrides `score`. The landlord sees real impressions/leads/
+    applications/spend on their own listing ("Your Property Promotion").
+  - **Perfect Partners™ directory** (`/partners`) — admin-managed partner businesses grouped by
+    category (Moving, Home Services, Financial/Insurance, Utilities, Home Products, Real Estate),
+    each with small "Sponsored"-labeled offer cards (promo code, "Get Offer") and an "Our
+    Advertising Promise" trust statement. A narrow, capped Perfect Partners sidebar also appears
+    on `/search` for desktop — "useful, relevant, never overwhelming" as an actual admin-editable
+    frequency ceiling (`ad_frequency_rules`: max sponsored properties per page, max partner cards
+    per page, an ads-enabled kill switch), not just a design intention.
+  - **Admin** (`/admin`) — a Campaign Review Queue (approve/reject/pause; nothing goes live
+    unreviewed), the package price editor, the Perfect Partners/offer manager, the frequency-rule
+    editor, and an Advertising Revenue dashboard (Today/Week/Month/Year/Total) computed from real
+    `ad_revenue_events` rows written only when an admin approves a paid campaign — the same
+    "never invent a number" pattern as MRR.
 - Everything from the Phase 1 base build: auth, onboarding, property CRUD, application pipeline,
   messaging, saved items, Stripe Checkout.
 
@@ -148,20 +174,26 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
 - `src/lib/perfectRent/jurisdiction.ts` — `buildJurisdictionAllowed`, the permissive-by-default
   jurisdiction gate (see Compliance notes — this is a real mechanism with no real legal data
   behind it yet)
+- `src/lib/perfectPartners/engine.ts` — `interleaveSponsoredProperties` (repositions an
+  already-scored result, never rescoring it) and `selectPartnerOffers` (caps partner-offer cards
+  per page) — both pure, both reading `ad_frequency_rules` rather than a hard-coded cap
 - `src/lib/auth/` — auth context/hooks
 - `src/types/domain.ts` — domain types mirrored 1:1 against the SQL schema, plus
   `computeRentalReady` (Rental Ready), `computeOnTimeStreak`/`computePerfectPayLevel` (Perfect
   Pay™) — every one of these is a pure function computed live, never a stored/cached field
 - `src/data/seed/` — seed data for local dev-mode (tenants, landlords, properties, invitations,
   interests, shares, reviews, subscription plans, rent incentives, jurisdiction rules, payment
-  verifications, Perfect Pay™ milestones, reward events, etc.)
+  verifications, Perfect Pay™ milestones, reward events, advertisers, ad packages, ad campaigns,
+  Perfect Partners, partner offers, etc.)
 - `supabase/migrations/` — canonical SQL schema, applied in numeric order: `0001_init.sql` (core
   Phase 1 schema + RLS), `0002_perfect_tennant_passport.sql` (invitations, interests, sharing,
   reviews, configurable plans, landlord verification), `0003_property_lease_term.sql`,
   `0004_tenant_marketplace_visibility.sql` (marketplace opt-in + the `tenant_public_profile`
   view's current definition), `0005_perfect_rent_pay_rewards.sql` (`rent_incentives`,
   `jurisdiction_rules`, `payment_verifications`, `perfect_pay_milestones`, `reward_events`, plus
-  RLS including owner-scoped and admin-read policies)
+  RLS including owner-scoped and admin-read policies), `0006_perfect_partners.sql`
+  (`advertisers`, `ad_packages`, `ad_campaigns`, `perfect_partners`, `partner_offers`,
+  `offer_redemptions`, `ad_impressions`/`ad_clicks`, `ad_frequency_rules`, `ad_revenue_events`)
 - `supabase/functions/` — `stripe-checkout` and `stripe-webhook` Edge Functions (deployed to the
   live project already; see "Stripe billing" above to activate them)
 
@@ -196,6 +228,17 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
   verify a rent payment happened — no payment processor is integrated. A `payment_verifications`
   row is only ever created by an explicit landlord action; nothing marks a payment verified
   automatically.
+- **Paid placement (Perfect Partners™/Sponsored Property) cannot change a Perfect Match™ score —
+  enforced structurally, not by convention.** `interleaveSponsoredProperties()`
+  (`src/lib/perfectPartners/engine.ts`) only ever repositions an entry already scored by the same
+  `scoreMatch()` every organic result uses; it has no parameter through which a caller could pass
+  a different score. No `ad_campaigns`/`perfect_partners` targeting field is a protected
+  characteristic — only geography (city/state/zip/radius) and campaign category exist to target
+  on, so there's no field to misuse for discriminatory ad targeting in the first place.
+- **No campaign goes live to a tenant unreviewed.** `ad_campaigns` starts in `pending_review`;
+  only an admin approval (`reviewCampaign`) makes it `approved`, and the RLS policy tenants read
+  through (`ad_campaigns_public_read_active`) only ever returns `approved`, currently date-active
+  rows.
 
 ## What's deferred (not built in this pass)
 
@@ -228,6 +271,27 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
 - **Perfect Rent™/Perfect Pay™ analytics visualizations** — the Admin page ships the underlying
   counts (active incentives, average discount, verified-payment tenants, reward events), not
   charts or trends.
+- **A separate third-party advertiser signup role/portal** ("Advertise With The Perfect Tennant"
+  landing page, self-service account creation) — Perfect Partners™ businesses are onboarded by an
+  admin in this pass; the only self-service advertising flow built is a landlord promoting their
+  own property (`getOrCreateAdvertiserForLandlord` lazily creates the one advertiser row that
+  needs).
+- **Real advertiser billing** — submitting a Sponsored Property campaign is a Phase 1 stub, same
+  pattern as subscription billing: no card is ever charged. An admin's approval still records a
+  real `ad_revenue_events` row from the package's real configured price, so the revenue dashboard
+  isn't fabricated, but no payment is actually collected yet.
+- **Featured Landlord self-serve purchase** — the schema and admin review flow fully support the
+  `featured_landlord` campaign type, but the landlord-facing purchase UI was only built for
+  Sponsored Property in this pass; a Featured Landlord placement can be created by an admin today.
+- **Contextual/behavioral partner-offer targeting** (move-in date, pets, "moving to Omaha" search
+  intent) — `selectPartnerOffers()` currently caps and orders by `sort_order` only; geography/
+  behavior-based targeting for the Perfect Partners directory itself is not built (Sponsored
+  Property campaigns do carry real geography fields, since that's the property's own location).
+- **Advertising analytics charts** — the Admin page ships real counts (revenue by period,
+  campaign status, redemptions) and a landlord's own per-listing metrics, not visualizations.
+- **Perfect Partners categories are a fixed Postgres enum**, not a live admin-editable list —
+  adding a wholly new category (beyond the six seeded) needs a migration, consistent with how
+  `incentive_type`/`subscription_tier` are already modeled as enums elsewhere in this schema.
 
 ## Known security-advisory items (Supabase linter)
 

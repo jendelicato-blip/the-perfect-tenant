@@ -532,3 +532,140 @@ export function computePerfectPayLevel(streak: number, milestones: PerfectPayMil
   const next = sorted.find((m) => m.sort_order > current.sort_order) ?? null;
   return { level: current.level, streak, next };
 }
+
+// ---------- Perfect Partners™ (advertising & monetization) ----------
+//
+// Core rule, enforced structurally, not just by convention: paid placement
+// can only ever change VISIBILITY (position, "Sponsored" labeling) — never
+// the Perfect Match™ score. Nothing below is written by scoreMatch(), and
+// no field here targets a protected characteristic: only geography
+// (city/state/zip/radius) and campaign category exist to target on.
+// Deliberately not modeled: a separate third-party advertiser signup role
+// (Phase 1 only supports a landlord promoting their own property, plus
+// admin-managed Perfect Partners — see docs/ARCHITECTURE.md) and real
+// advertiser billing (approving a campaign records a real revenue event
+// from a real configured package price, but no card is ever charged).
+
+export type AdCategory = "real_estate" | "moving" | "home_services" | "financial_insurance" | "utilities" | "home_products";
+
+export const AD_CATEGORY_LABELS: Record<AdCategory, string> = {
+  real_estate: "Real Estate",
+  moving: "Moving",
+  home_services: "Home Services",
+  financial_insurance: "Financial / Insurance",
+  utilities: "Utilities",
+  home_products: "Home Products",
+};
+
+export type CampaignType = "sponsored_property" | "featured_landlord" | "perfect_partner" | "partner_deal";
+
+export type CampaignStatus = "draft" | "pending_review" | "approved" | "rejected" | "paused" | "expired";
+
+export interface Advertiser {
+  id: string;
+  name: string;
+  category: AdCategory;
+  website: string | null;
+  contact_email: string | null;
+  owner_landlord_id: string | null;
+  verified_business: boolean;
+  verified_at: string | null;
+  created_at: string;
+}
+
+export interface AdPackage {
+  id: string;
+  name: string;
+  campaign_type: CampaignType;
+  duration_days: number;
+  price_cents: number;
+  active: boolean;
+  sort_order: number;
+}
+
+export interface AdCampaign {
+  id: string;
+  advertiser_id: string;
+  campaign_type: CampaignType;
+  status: CampaignStatus;
+  property_id: string | null;
+  landlord_id: string | null;
+  package_id: string | null;
+  target_city: string | null;
+  target_state: string | null;
+  target_zip: string | null;
+  target_radius_miles: number | null;
+  headline: string;
+  description: string | null;
+  offer_text: string | null;
+  cta_label: string;
+  destination_url: string | null;
+  image_url: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface PerfectPartner {
+  id: string;
+  advertiser_id: string | null;
+  category: AdCategory;
+  name: string;
+  emoji: string;
+  tagline: string | null;
+  active: boolean;
+  sort_order: number;
+}
+
+export interface PartnerOffer {
+  id: string;
+  partner_id: string;
+  title: string;
+  description: string;
+  offer_text: string;
+  promo_code: string | null;
+  cta_label: string;
+  destination_url: string | null;
+  expires_at: string | null;
+  active: boolean;
+}
+
+export interface OfferRedemption {
+  id: string;
+  offer_id: string;
+  tenant_id: string;
+  redeemed_at: string;
+}
+
+export interface AdImpression {
+  id: string;
+  campaign_id: string | null;
+  offer_id: string | null;
+  placement: string;
+  occurred_at: string;
+}
+
+export interface AdClick {
+  id: string;
+  campaign_id: string | null;
+  offer_id: string | null;
+  placement: string;
+  occurred_at: string;
+}
+
+export interface AdRevenueEvent {
+  id: string;
+  campaign_id: string;
+  amount_cents: number;
+  created_at: string;
+}
+
+// Singleton config row — "useful, relevant, never overwhelming" as an
+// actual admin-editable ceiling, not just a design intention.
+export interface AdFrequencyRules {
+  max_sponsored_properties_per_page: number;
+  max_partner_cards_per_page: number;
+  ads_enabled: boolean;
+}

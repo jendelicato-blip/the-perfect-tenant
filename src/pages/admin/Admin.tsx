@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
 import type { PerfectPayMilestone, SubscriptionPlan } from "@/types/domain";
+import { PerfectPartnersAdminSection } from "@/pages/admin/PerfectPartnersAdmin";
 
 function StatTile({ label, value }: { label: string; value: string | number }) {
   return (
@@ -68,6 +69,10 @@ export function AdminDashboard() {
         <StatTile label="Applications" value={metrics.totalApplications} />
         <StatTile label="Passport shares" value={metrics.passportShares} />
         <StatTile label="MRR" value={`$${(metrics.mrrCents / 100).toLocaleString()}`} />
+        <StatTile label="Active sponsored campaigns" value={metrics.activeCampaignsCount} />
+        <StatTile label="Campaigns pending review" value={metrics.pendingReviewCampaignsCount} />
+        <StatTile label="Perfect Partners" value={metrics.perfectPartnersCount} />
+        <StatTile label="Partner offer redemptions" value={metrics.partnerOfferRedemptionsCount} />
       </div>
 
       <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect Rent™ analytics</h2>
@@ -99,6 +104,8 @@ export function AdminDashboard() {
           <PlanRow key={plan.tier} plan={plan} onSave={(price) => savePlan(plan, price)} saving={saving === plan.tier} />
         ))}
       </div>
+
+      <PerfectPartnersAdminSection />
     </div>
   );
 }

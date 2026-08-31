@@ -178,7 +178,77 @@ is only ever recorded once a landlord's confirmation actually reaches it, never 
 the existing verification tables), and Perfect Rent™ potential savings (`computePerfectRent`
 against the tenant's saved/applied properties) into one view. Achievement badges are professional
 labels over real thresholds (e.g. "Rental Ready," "Bronze Payer") — deliberately not a points/XP
-game. The "Coming Soon" future partner categories (Financial, Insurance, Moving, Home Services,
-Utilities) render as labeled placeholders with no partner data behind them; do not wire in partner
-offers here without real partner integrations — a fabricated offer would violate the same
-never-fabricate rule as an invented savings number.
+game. The "Coming Soon" categories shown here are the ones with no seeded Perfect Partners™ yet;
+real partner categories (see below) now render as actual, working offer cards rather than
+placeholders — the placeholder styling stays reserved for whichever categories still have no real
+partnership behind them.
+
+## Perfect Partners™: the advertising/monetization engine
+
+One rule governs everything in this section, enforced structurally rather than by convention:
+**paid placement can change VISIBILITY, never the Perfect Match™ score.**
+
+### The non-negotiable boundary
+
+`interleaveSponsoredProperties(scored, sponsoredPropertyIds, rules)`
+(`src/lib/perfectPartners/engine.ts`) is the only place a sponsored property's position in a
+result list changes. It takes an array already scored by `scoreMatch()` — the exact same call
+every organic result went through — and its only two effects are (1) moving up to
+`rules.max_sponsored_properties_per_page` matching entries to a more prominent slot and (2)
+tagging them `sponsored: true`. There is no parameter through which a caller could pass a
+different score, and the function never calls `scoreMatch` itself. `Matches.tsx` calls it with
+the tenant's real scored results plus the set of property IDs with an active sponsored campaign;
+`PropertyCard`/`Search.tsx` render the same `score` field whether or not `sponsored` is set. This
+is what makes "a property that's objectively a 91% match remains a 91% match whether the landlord
+pays for promotion or not" true in code, not just in copy.
+
+`selectPartnerOffers(offers, rules)` is the equivalent cap for the Perfect Partners directory: it
+filters to active, non-expired offers and slices to `rules.max_partner_cards_per_page` — the
+actual mechanism behind "useful, relevant, never overwhelming," not just a design intention.
+
+### Sponsored Property lifecycle
+
+1. A landlord opens their property's edit page and picks an admin-priced `ad_packages` row (7-Day
+   Boost/14-Day Featured/30-Day Featured/Premium Featured — `PromotePropertyPanel.tsx`).
+2. `createSponsoredPropertyCampaign` lazily creates (or reuses) the landlord's one `advertisers`
+   row via `getOrCreateAdvertiserForLandlord` — there's no separate third-party advertiser signup
+   flow in this pass, only this self-promotion path — and inserts an `ad_campaigns` row with
+   `status = 'pending_review'`, `campaign_type = 'sponsored_property'`, and geography copied
+   straight from the property (a sponsored property's location *is* the property's own location,
+   not a separately configurable target).
+3. Nothing is visible to any tenant yet: the RLS policy tenants read through
+   (`ad_campaigns_public_read_active`) only ever returns rows where `status = 'approved'` and the
+   current time falls within `starts_at`/`ends_at`.
+4. An admin reviews the queue at `/admin` and calls `reviewCampaign(id, "approved" | "rejected")`.
+   Approving is the one action that (a) sets real `starts_at = now()` /
+   `ends_at = now() + package.duration_days`, and (b) inserts a real `ad_revenue_events` row from
+   the package's real `price_cents` — never a fabricated number, the same pattern as
+   `subscription_plans` price × active-subscriber count driving MRR. No payment is actually
+   collected (see "What's deferred" in the README) — this is a Phase 1 stub, same as Stripe
+   Checkout's own fallback.
+5. Once approved and date-active, the campaign is visible to `Matches.tsx`, which builds a
+   `Set<propertyId>` of active sponsored campaigns and passes it to
+   `interleaveSponsoredProperties`. The landlord's own property page shows real
+   impressions/clicks/applications for that campaign (`getCampaignMetrics`), reading
+   `ad_impressions`/`ad_clicks` (anonymous counters — no tenant identifier is ever stored on
+   these rows) and the property's own `applications` count.
+
+### Perfect Partners™ directory + offers
+
+`perfect_partners` (grouped by `ad_category`) and `partner_offers` are admin-managed only in this
+pass — see `PerfectPartnersAdminSection` (`src/pages/admin/PerfectPartnersAdmin.tsx`). A tenant
+clicking "Get Offer" calls `redeemPartnerOffer`, which upserts one `offer_redemptions` row per
+`(offer_id, tenant_id)` — a repeat click never inflates the lead count — and reveals the promo
+code/next step only after that explicit action, never before or automatically. `/partners`
+(categories + "Our Advertising Promise" trust copy) and the desktop-only `PartnerOffersSidebar` on
+`/search` are the two surfaces; both call `selectPartnerOffers` before rendering anything, so the
+frequency ceiling is enforced once, in one place, rather than trusted to each page.
+
+### Compliance by omission
+
+No table in `0006_perfect_partners.sql` has a targeting field for anything other than geography
+(`target_city`/`target_state`/`target_zip`/`target_radius_miles`) and `ad_category`. There is
+structurally no column to target a protected characteristic with — the Fair Housing safeguard here
+is that the field simply doesn't exist, not a runtime check that could be bypassed or forgotten.
+Do not add a targeting field to `ad_campaigns` without checking it against the same Fair Housing
+checklist that governs Perfect Match™ inputs above.

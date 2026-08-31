@@ -6,8 +6,15 @@
 // with no changes required in pages/components. See docs/ARCHITECTURE.md.
 
 import type {
+  AdCampaign,
+  AdCategory,
+  AdFrequencyRules,
+  AdPackage,
+  Advertiser,
   Application,
   ApplicationStatus,
+  CampaignStatus,
+  CampaignType,
   Conversation,
   IncentiveType,
   InvitationStatus,
@@ -15,10 +22,13 @@ import type {
   LandlordReview,
   Message,
   Notification,
+  OfferRedemption,
+  PartnerOffer,
   PassportShare,
   PassportView,
   PaymentStatus,
   PaymentVerification,
+  PerfectPartner,
   PerfectPayLevel,
   PerfectPayMilestone,
   Property,
@@ -42,7 +52,9 @@ import { scoreMatch } from "@/lib/match/score";
 import {
   ApiError,
   type AdminMetrics,
+  type AdvertisingRevenue,
   type AuthUser,
+  type CampaignMetrics,
   type MarketplaceTenant,
   type NewLandlordReview,
   type NewProperty,
@@ -766,6 +778,257 @@ export async function listRewardEvents(tenantId: string): Promise<RewardEvent[]>
   return db.rewardEvents.filter((r) => r.tenant_id === tenantId).sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
+// ---------- Perfect Partners™ (advertising & monetization) ----------
+// Money changes visibility only — nothing here ever writes to
+// tenantMatches or reads scoreMatch's inputs. See src/lib/perfectPartners/engine.ts.
+
+export async function getAdFrequencyRules(): Promise<AdFrequencyRules> {
+  const db = getDb();
+  return db.adFrequencyRules;
+}
+
+export async function updateAdFrequencyRules(patch: Partial<AdFrequencyRules>): Promise<void> {
+  mutate((db) => {
+    Object.assign(db.adFrequencyRules, patch);
+  });
+}
+
+function campaignIsActive(c: AdCampaign, now = Date.now()): boolean {
+  if (c.status !== "approved") return false;
+  if (c.starts_at && new Date(c.starts_at).getTime() > now) return false;
+  if (c.ends_at && new Date(c.ends_at).getTime() < now) return false;
+  return true;
+}
+
+// Approved + currently date-active sponsored_property campaigns — the set a
+// tenant browsing search/matches is allowed to see labeled "Sponsored".
+export async function listActiveSponsoredPropertyCampaigns(): Promise<AdCampaign[]> {
+  const db = getDb();
+  return db.adCampaigns.filter((c) => c.campaign_type === "sponsored_property" && campaignIsActive(c));
+}
+
+export async function listPerfectPartners(onlyActive = true): Promise<PerfectPartner[]> {
+  const db = getDb();
+  const partners = onlyActive ? db.perfectPartners.filter((p) => p.active) : db.perfectPartners;
+  return [...partners].sort((a, b) => a.sort_order - b.sort_order);
+}
+
+export async function listPartnerOffers(partnerId?: string, onlyActive = true): Promise<PartnerOffer[]> {
+  const db = getDb();
+  const now = Date.now();
+  return db.partnerOffers.filter((o) => {
+    if (partnerId && o.partner_id !== partnerId) return false;
+    if (onlyActive && !o.active) return false;
+    if (onlyActive && o.expires_at && new Date(o.expires_at).getTime() < now) return false;
+    return true;
+  });
+}
+
+export async function recordAdImpression(kind: "campaign" | "offer", id: string, placement: string): Promise<void> {
+  mutate((db) => {
+    db.adImpressions.push({
+      id: newId("imp"),
+      campaign_id: kind === "campaign" ? id : null,
+      offer_id: kind === "offer" ? id : null,
+      placement,
+      occurred_at: new Date().toISOString(),
+    });
+  });
+}
+
+export async function recordAdClick(kind: "campaign" | "offer", id: string, placement: string): Promise<void> {
+  mutate((db) => {
+    db.adClicks.push({
+      id: newId("clk"),
+      campaign_id: kind === "campaign" ? id : null,
+      offer_id: kind === "offer" ? id : null,
+      placement,
+      occurred_at: new Date().toISOString(),
+    });
+  });
+}
+
+// One row per tenant per offer — a repeat "Get Offer" click doesn't inflate
+// the lead count. Also records a click, since redeeming implies a click.
+export async function redeemPartnerOffer(tenantId: string, offerId: string): Promise<OfferRedemption> {
+  return mutate((db) => {
+    const existing = db.offerRedemptions.find((r) => r.offer_id === offerId && r.tenant_id === tenantId);
+    if (existing) return existing;
+    db.adClicks.push({ id: newId("clk"), campaign_id: null, offer_id: offerId, placement: "partner_offer", occurred_at: new Date().toISOString() });
+    const redemption: OfferRedemption = { id: newId("redeem"), offer_id: offerId, tenant_id: tenantId, redeemed_at: new Date().toISOString() };
+    db.offerRedemptions.push(redemption);
+    return redemption;
+  });
+}
+
+// ---------- Landlord: promote a property (Sponsored Property) ----------
+
+export async function listAdPackages(campaignType?: CampaignType, onlyActive = true): Promise<AdPackage[]> {
+  const db = getDb();
+  return db.adPackages
+    .filter((p) => (!campaignType || p.campaign_type === campaignType) && (!onlyActive || p.active))
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
+// Lazily creates the one advertiser row a landlord needs to self-promote —
+// there's no separate third-party advertiser signup flow in this pass.
+export async function getOrCreateAdvertiserForLandlord(landlordId: string): Promise<Advertiser> {
+  return mutate((db) => {
+    const existing = db.advertisers.find((a) => a.owner_landlord_id === landlordId);
+    if (existing) return existing;
+    const landlord = db.landlords.find((l) => l.user_id === landlordId);
+    const advertiser: Advertiser = {
+      id: newId("adv"),
+      name: landlord?.company_name ?? "Landlord promotion",
+      category: "real_estate" as AdCategory,
+      website: null,
+      contact_email: null,
+      owner_landlord_id: landlordId,
+      verified_business: false,
+      verified_at: null,
+      created_at: new Date().toISOString(),
+    };
+    db.advertisers.push(advertiser);
+    return advertiser;
+  });
+}
+
+export async function createSponsoredPropertyCampaign(landlordId: string, propertyId: string, packageId: string): Promise<AdCampaign> {
+  const advertiser = await getOrCreateAdvertiserForLandlord(landlordId);
+  return mutate((db) => {
+    const property = db.properties.find((p) => p.id === propertyId);
+    const campaign: AdCampaign = {
+      id: newId("camp"),
+      advertiser_id: advertiser.id,
+      campaign_type: "sponsored_property",
+      status: "pending_review",
+      property_id: propertyId,
+      landlord_id: landlordId,
+      package_id: packageId,
+      target_city: property?.city ?? null,
+      target_state: property?.state ?? null,
+      target_zip: property?.zip ?? null,
+      target_radius_miles: null,
+      headline: property?.address ?? "Sponsored listing",
+      description: null,
+      offer_text: null,
+      cta_label: "View Listing",
+      destination_url: null,
+      image_url: null,
+      starts_at: null,
+      ends_at: null,
+      rejection_reason: null,
+      created_at: new Date().toISOString(),
+      reviewed_at: null,
+    };
+    db.adCampaigns.push(campaign);
+    return campaign;
+  });
+}
+
+export async function listCampaignsForLandlord(landlordId: string): Promise<AdCampaign[]> {
+  const db = getDb();
+  return db.adCampaigns.filter((c) => c.landlord_id === landlordId || db.advertisers.some((a) => a.id === c.advertiser_id && a.owner_landlord_id === landlordId));
+}
+
+export async function getCampaignMetrics(campaignId: string): Promise<CampaignMetrics> {
+  const db = getDb();
+  const impressions = db.adImpressions.filter((i) => i.campaign_id === campaignId).length;
+  const clicks = db.adClicks.filter((c) => c.campaign_id === campaignId).length;
+  const campaign = db.adCampaigns.find((c) => c.id === campaignId);
+  const applications = campaign?.property_id ? db.applications.filter((a) => a.property_id === campaign.property_id).length : 0;
+  return { impressions, clicks, leads: clicks, applications };
+}
+
+// ---------- Admin: Perfect Partners™ management ----------
+
+export async function listCampaignsForReview(status?: CampaignStatus): Promise<AdCampaign[]> {
+  const db = getDb();
+  return status ? db.adCampaigns.filter((c) => c.status === status) : db.adCampaigns;
+}
+
+// Approving a paid (package_id set) campaign records a real
+// ad_revenue_events row from the package's real configured price — never a
+// fabricated number — and sets a real starts_at/ends_at window from the
+// package's duration. No card is ever charged (see README).
+export async function reviewCampaign(campaignId: string, decision: "approved" | "rejected", rejectionReason?: string): Promise<void> {
+  mutate((db) => {
+    const campaign = db.adCampaigns.find((c) => c.id === campaignId);
+    if (!campaign) return;
+    campaign.status = decision;
+    campaign.reviewed_at = new Date().toISOString();
+    campaign.rejection_reason = decision === "rejected" ? rejectionReason ?? null : null;
+    if (decision === "approved") {
+      const pkg = campaign.package_id ? db.adPackages.find((p) => p.id === campaign.package_id) : null;
+      const now = new Date();
+      campaign.starts_at = now.toISOString();
+      if (pkg) {
+        campaign.ends_at = new Date(now.getTime() + pkg.duration_days * 24 * 60 * 60 * 1000).toISOString();
+        db.adRevenueEvents.push({ id: newId("rev"), campaign_id: campaign.id, amount_cents: pkg.price_cents, created_at: now.toISOString() });
+      }
+    }
+  });
+}
+
+export async function setCampaignStatus(campaignId: string, status: CampaignStatus): Promise<void> {
+  mutate((db) => {
+    const campaign = db.adCampaigns.find((c) => c.id === campaignId);
+    if (campaign) campaign.status = status;
+  });
+}
+
+export async function updateAdPackage(id: string, patch: Partial<Pick<AdPackage, "name" | "duration_days" | "price_cents" | "active">>): Promise<void> {
+  mutate((db) => {
+    const pkg = db.adPackages.find((p) => p.id === id);
+    if (pkg) Object.assign(pkg, patch);
+  });
+}
+
+export async function createPerfectPartner(input: Omit<PerfectPartner, "id">): Promise<PerfectPartner> {
+  return mutate((db) => {
+    const partner: PerfectPartner = { ...input, id: newId("pp") };
+    db.perfectPartners.push(partner);
+    return partner;
+  });
+}
+
+export async function updatePerfectPartner(id: string, patch: Partial<Omit<PerfectPartner, "id">>): Promise<void> {
+  mutate((db) => {
+    const partner = db.perfectPartners.find((p) => p.id === id);
+    if (partner) Object.assign(partner, patch);
+  });
+}
+
+export async function createPartnerOffer(input: Omit<PartnerOffer, "id">): Promise<PartnerOffer> {
+  return mutate((db) => {
+    const offer: PartnerOffer = { ...input, id: newId("po") };
+    db.partnerOffers.push(offer);
+    return offer;
+  });
+}
+
+export async function updatePartnerOffer(id: string, patch: Partial<Omit<PartnerOffer, "id">>): Promise<void> {
+  mutate((db) => {
+    const offer = db.partnerOffers.find((o) => o.id === id);
+    if (offer) Object.assign(offer, patch);
+  });
+}
+
+export async function getAdvertisingRevenue(): Promise<AdvertisingRevenue> {
+  const db = getDb();
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const sumSince = (cutoffMs: number) =>
+    db.adRevenueEvents.filter((e) => new Date(e.created_at).getTime() >= cutoffMs).reduce((sum, e) => sum + e.amount_cents, 0);
+  return {
+    todayCents: sumSince(now - day),
+    weekCents: sumSince(now - 7 * day),
+    monthCents: sumSince(now - 30 * day),
+    yearCents: sumSince(now - 365 * day),
+    totalCents: db.adRevenueEvents.reduce((sum, e) => sum + e.amount_cents, 0),
+  };
+}
+
 // ---------- Admin ----------
 
 export async function getAdminMetrics(): Promise<AdminMetrics> {
@@ -788,6 +1051,8 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     : 0;
   const verifiedPaymentTenants = new Set(db.paymentVerifications.map((p) => p.tenant_id)).size;
   const totalOnTimePayments = db.paymentVerifications.filter((p) => p.status === "on_time").length;
+  const activeCampaignsCount = db.adCampaigns.filter((c) => campaignIsActive(c)).length;
+  const pendingReviewCampaignsCount = db.adCampaigns.filter((c) => c.status === "pending_review").length;
 
   return {
     totalTenants: db.tenants.length,
@@ -804,6 +1069,10 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     verifiedPaymentTenants,
     totalOnTimePayments,
     rewardEventsCount: db.rewardEvents.length,
+    activeCampaignsCount,
+    pendingReviewCampaignsCount,
+    perfectPartnersCount: db.perfectPartners.filter((p) => p.active).length,
+    partnerOfferRedemptionsCount: db.offerRedemptions.length,
   };
 }
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FormRow, Input, Select } from "@/components/ui/Field";
 import { EMPTY_INCENTIVE_FORM, RentIncentiveEditor, type IncentiveFormValue } from "@/components/landlord/RentIncentiveEditor";
+import { PromotePropertyPanel } from "@/components/landlord/PromotePropertyPanel";
 import type { IncentiveType, JurisdictionRule, Property, PropertyStatus, PropertyType } from "@/types/domain";
 
 const INCENTIVE_TYPES: IncentiveType[] = ["passport_verified", "longer_lease", "auto_payment", "rental_history", "upfront_rent"];
@@ -266,6 +267,15 @@ export function LandlordPropertyForm() {
           />
         </div>
       </Card>
+
+      {isEditing && id && user && (
+        <Card className="mt-6 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">⭐ Sponsored Property</h2>
+          <div className="mt-4">
+            <PromotePropertyPanel landlordId={user.id} propertyId={id} />
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

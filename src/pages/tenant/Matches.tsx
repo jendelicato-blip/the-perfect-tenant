@@ -3,17 +3,26 @@ import * as api from "@/lib/data/api";
 import type { ScoredProperty } from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { PropertyCard } from "@/components/tenant/PropertyCard";
+import { interleaveSponsoredProperties, type WithSponsorFlag } from "@/lib/perfectPartners/engine";
 
 export function TenantMatches() {
   const { user } = useAuth();
-  const [matches, setMatches] = useState<ScoredProperty[]>([]);
+  const [matches, setMatches] = useState<WithSponsorFlag<ScoredProperty>[]>([]);
+  const [campaignByProperty, setCampaignByProperty] = useState<Map<string, string>>(new Map());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([api.getMatchesForTenant(user.id), api.listSavedProperties(user.id)]).then(([m, saved]) => {
-      setMatches(m);
+    Promise.all([
+      api.getMatchesForTenant(user.id),
+      api.listSavedProperties(user.id),
+      api.listActiveSponsoredPropertyCampaigns(),
+      api.getAdFrequencyRules(),
+    ]).then(([m, saved, campaigns, rules]) => {
+      const idToCampaign = new Map(campaigns.filter((c) => c.property_id).map((c) => [c.property_id as string, c.id]));
+      setCampaignByProperty(idToCampaign);
+      setMatches(interleaveSponsoredProperties(m, new Set(idToCampaign.keys()), rules));
       setSavedIds(new Set(saved.map((p) => p.id)));
       setLoading(false);
     });
@@ -48,6 +57,8 @@ export function TenantMatches() {
             reasons={m.reasons}
             saved={savedIds.has(m.property.id)}
             onToggleSave={() => toggleSave(m.property.id)}
+            sponsored={m.sponsored}
+            campaignId={campaignByProperty.get(m.property.id)}
           />
         ))}
       </div>

@@ -3,6 +3,7 @@ import * as api from "@/lib/data/api";
 import type { PropertyFilter } from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { PropertyCard } from "@/components/tenant/PropertyCard";
+import { PartnerOffersSidebar } from "@/components/tenant/PartnerOffersSidebar";
 import { Button } from "@/components/ui/Button";
 import { FormRow, Input } from "@/components/ui/Field";
 import type { PropertyWithPhotos } from "@/types/domain";
@@ -50,7 +51,9 @@ export function TenantSearch() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <div className="mx-auto max-w-5xl px-4 py-10">
+      <div className="flex gap-8">
+      <div className="min-w-0 flex-1">
       <h1 className="text-2xl font-bold text-slate-900">Search listings</h1>
 
       <form
@@ -87,6 +90,10 @@ export function TenantSearch() {
         {properties.map((p) => (
           <PropertyCard key={p.id} property={p} saved={savedIds.has(p.id)} onToggleSave={user ? () => toggleSave(p.id) : undefined} />
         ))}
+      </div>
+      </div>
+
+      <PartnerOffersSidebar placement="search_sidebar" />
       </div>
     </div>
   );
