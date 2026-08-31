@@ -1,30 +1,12 @@
+// Real brand assets (public/logo-horizontal.png, public/app-icon-*.png) —
+// see index.html for the favicon/apple-touch-icon/manifest wiring of the
+// square icon. LogoMark renders the icon alone (e.g. for compact contexts);
+// Logo renders the full "Perfect10ant" wordmark lockup used in both navbars.
+
 export function LogoMark({ className = "h-9 w-9" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <rect x="1" y="1" width="34" height="34" rx="10" fill="#f0faf4" stroke="#1f7a4c" strokeWidth="1.5" />
-      <path
-        d="M9 18.5L18 10l9 8.5"
-        stroke="#1f7a4c"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <path d="M11.5 17v8.5a1 1 0 0 0 1 1H23.5a1 1 0 0 0 1-1V17" stroke="#1f7a4c" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <path d="M15 22.2l2 2 3.6-4" stroke="#1f7a4c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </svg>
-  );
+  return <img src="/app-icon-192.png" alt="The Perfect10ant" className={`${className} rounded-xl object-contain`} />;
 }
 
-export function Logo({ className = "", markClassName = "h-9 w-9" }: { className?: string; markClassName?: string }) {
-  return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
-      <LogoMark className={markClassName} />
-      <span className="font-serif text-lg font-semibold leading-tight text-ink-900">
-        The Perfect
-        <br />
-        <span className="text-brand-600">10</span>ant
-      </span>
-    </span>
-  );
+export function Logo({ className = "h-10 w-auto" }: { className?: string }) {
+  return <img src="/logo-horizontal.png" alt="The Perfect10ant — Verified. Trusted. Ready to Rent." className={`${className} object-contain`} />;
 }
