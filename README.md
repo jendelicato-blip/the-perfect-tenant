@@ -80,6 +80,19 @@ Until those secrets are set, `stripe-checkout` returns an error and the Pricing 
 to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's read from the
 `subscription_plans` table, editable at `/admin` by an account with `users.is_admin = true`.
 
+### Rotating stock photos (optional)
+
+The Landing and ForLandlords hero photos can rotate to a fresh live Unsplash photo roughly weekly
+instead of staying on one fixed image forever (see `docs/ARCHITECTURE.md`):
+
+1. Create a free app at [unsplash.com/developers](https://unsplash.com/developers) and copy its
+   **Access Key**.
+2. Set `VITE_UNSPLASH_ACCESS_KEY` in `.env.local` (see `.env.example`). Optionally set
+   `VITE_UNSPLASH_APP_NAME` to match the app name you registered — it's only used for Unsplash's
+   required attribution links and defaults to `perfect10ant`.
+
+Until that key is set, both spots show the same fixed photo they always have — nothing changes.
+
 ## What's built
 
 - **Perfect10ant Passport™** (`/passport`) — the tenant's reusable profile: Rental Ready

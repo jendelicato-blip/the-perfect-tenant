@@ -6,6 +6,7 @@ import { isSupabaseConfigured } from "@/lib/data/supabaseClient";
 import * as api from "@/lib/data/api";
 import { PerfectRentBadge } from "@/components/tenant/PerfectRentBadge";
 import { InlineLogo } from "@/components/Logo";
+import { RotatingStockPhoto } from "@/components/RotatingStockPhoto";
 import type { PropertyWithPhotos } from "@/types/domain";
 
 const TRUST_ITEMS = [
@@ -73,9 +74,11 @@ export function Landing() {
 
           <div className="relative">
             <div className="overflow-hidden rounded-2xl">
-              <img
-                src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=900&q=80"
-                alt="Tenant relaxing at home"
+              <RotatingStockPhoto
+                spotKey="landing-hero"
+                query="renter relaxing at home apartment"
+                fallbackSrc="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=900&q=80"
+                fallbackAlt="Tenant relaxing at home"
                 className="h-96 w-full object-cover"
               />
             </div>

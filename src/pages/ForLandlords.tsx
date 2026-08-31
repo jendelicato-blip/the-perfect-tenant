@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { InlineLogo } from "@/components/Logo";
+import { RotatingStockPhoto } from "@/components/RotatingStockPhoto";
 
 export function ForLandlords() {
   return (
@@ -17,9 +18,11 @@ export function ForLandlords() {
           </Link>
         </div>
         <div className="overflow-hidden rounded-2xl">
-          <img
-            src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900&q=80"
-            alt="A well-kept rental property ready to list"
+          <RotatingStockPhoto
+            spotKey="for-landlords-hero"
+            query="well kept rental property exterior"
+            fallbackSrc="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900&q=80"
+            fallbackAlt="A well-kept rental property ready to list"
             className="h-72 w-full object-cover"
           />
         </div>

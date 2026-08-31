@@ -378,3 +378,28 @@ structurally no column to target a protected characteristic with — the Fair Ho
 is that the field simply doesn't exist, not a runtime check that could be bypassed or forgotten.
 Do not add a targeting field to `ad_campaigns` without checking it against the same Fair Housing
 checklist that governs Perfect Match™ inputs above.
+
+## Rotating stock photos: a real Unsplash integration, inert without a key
+
+Marketing-page hero photos (Landing, ForLandlords) used to be one fixed Unsplash URL committed to
+the repo forever. `src/lib/unsplash.ts` + `src/components/RotatingStockPhoto.tsx` replace that with
+a real call to Unsplash's Random Photo API, gated the same way Supabase is
+(`isUnsplashConfigured`/`isSupabaseConfigured`): with no `VITE_UNSPLASH_ACCESS_KEY` set, every spot
+renders its original fixed photo exactly as before — nothing regresses for a deploy that never
+configures this.
+
+- **Rotation, not refetch-per-view**: each spot (`spotKey`, e.g. `"landing-hero"`) caches its
+  fetched photo in `localStorage` with a timestamp and only calls the API again once
+  `ROTATE_EVERY_MS` (7 days) has passed — so the photo visibly changes on a schedule without
+  burning through Unsplash's 50-requests/hour demo-app rate limit on every page load. A failed
+  refetch (rate limit, network) falls back to the last cached photo rather than the original
+  static one, since a slightly-stale real photo is still a real photo.
+- **Compliance is not optional, so it isn't a follow-up**: Unsplash's API guidelines require, for
+  every photo actually used (hotlinked-and-displayed counts, not just an explicit "download"
+  click), both a UTM-tagged credit link to the photographer and to Unsplash
+  (`RotatingStockPhoto`'s corner attribution) and a ping to the photo's `download_location`
+  endpoint (`fetchRandomPhoto` in `lib/unsplash.ts`). Do not hotlink a new Unsplash photo anywhere
+  in the app without both.
+- **Deferred**: this only covers the two marketing hero photos, not property listing photos —
+  those are landlord-uploaded (or seeded) and represent an actual property, so rotating them would
+  misrepresent what's being rented; nothing about that path changes here.

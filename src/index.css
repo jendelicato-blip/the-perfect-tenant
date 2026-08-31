@@ -17,10 +17,5 @@ h1,
 h2,
 h3,
 .font-serif {
-  font-family: "Fraunces", ui-serif, Georgia, serif;
-  /* Fraunces' default "fi"/"fl" ligatures fuse into a stylized glyph that
-     reads as a rendering glitch at display sizes — disable ligatures so
-     "fi" (e.g. "Confidence") prints as ordinary separate letters. */
-  font-variant-ligatures: none;
-  font-feature-settings: "liga" 0, "clig" 0, "dlig" 0;
+  font-family: "Lora", ui-serif, Georgia, serif;
 }
