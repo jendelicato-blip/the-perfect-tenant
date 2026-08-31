@@ -4,7 +4,7 @@ import type { AdminMetrics } from "@/lib/data/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Field";
-import type { PerfectPayMilestone, PlatformFeeConfig, SubscriptionPlan } from "@/types/domain";
+import type { PerfectPayMilestone, PlatformFeeConfig, SubscriptionPlan, WebhookEvent } from "@/types/domain";
 import { PerfectPartnersAdminSection } from "@/pages/admin/PerfectPartnersAdmin";
 
 function StatTile({ label, value }: { label: string; value: string | number }) {
@@ -21,21 +21,24 @@ export function AdminDashboard() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
   const [feeConfig, setFeeConfig] = useState<PlatformFeeConfig | null>(null);
+  const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [savingMilestone, setSavingMilestone] = useState<string | null>(null);
   const [savingFee, setSavingFee] = useState(false);
 
   async function load() {
-    const [m, p, ms, fee] = await Promise.all([
+    const [m, p, ms, fee, events] = await Promise.all([
       api.getAdminMetrics(),
       api.listSubscriptionPlans(),
       api.listPerfectPayMilestones(),
       api.getPlatformFeeConfig(),
+      api.listRecentWebhookEvents(),
     ]);
     setMetrics(m);
     setPlans([...p].sort((a, b) => a.price_cents - b.price_cents));
     setMilestones([...ms].sort((a, b) => a.sort_order - b.sort_order));
     setFeeConfig(fee);
+    setWebhookEvents(events);
   }
 
   useEffect(() => {
@@ -174,6 +177,39 @@ export function AdminDashboard() {
         {plans.map((plan) => (
           <PlanRow key={plan.tier} plan={plan} onSave={(price) => savePlan(plan, price)} saving={saving === plan.tier} />
         ))}
+      </div>
+
+      <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect Pay™ webhook events</h2>
+      <p className="text-sm text-slate-600">
+        Deliveries received by the <code className="rounded bg-slate-100 px-1">perfect-pay-webhook</code> endpoint from a
+        payment processor — signature-verified and idempotent. Rent payments today are landlord-confirmed only, so this
+        list stays empty until a real charge-creation flow and processor are connected; the endpoint is real, not
+        simulated.
+      </p>
+      <div className="mt-4">
+        {webhookEvents.length === 0 ? (
+          <Card className="p-4 text-sm text-slate-500">
+            No webhook events received yet — this endpoint isn't connected to a live payment provider yet.
+          </Card>
+        ) : (
+          <Card className="divide-y divide-slate-100 p-0">
+            {webhookEvents.map((event) => (
+              <div key={event.id} className="flex items-center justify-between p-4">
+                <div>
+                  <p className="font-medium text-slate-900">{event.type}</p>
+                  <p className="text-xs text-slate-500">Received {new Date(event.received_at).toLocaleString()}</p>
+                </div>
+                <span
+                  className={`rounded-full px-2 py-1 text-xs font-medium ${
+                    event.processed_at ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {event.processed_at ? "Processed" : "Claimed, not yet processed"}
+                </span>
+              </div>
+            ))}
+          </Card>
+        )}
       </div>
 
       <PerfectPartnersAdminSection />

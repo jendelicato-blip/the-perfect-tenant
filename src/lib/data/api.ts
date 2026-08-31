@@ -122,6 +122,7 @@ export const {
   issueRefund,
   listRefundsForTenant,
   listRefundsForLandlord,
+  listRecentWebhookEvents,
 } = impl;
 
 export type {

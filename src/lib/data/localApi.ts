@@ -53,6 +53,7 @@ import type {
   TenantPreferences,
   TenantSummary,
   User,
+  WebhookEvent,
 } from "@/types/domain";
 import { computeOnTimeStreak } from "@/types/domain";
 import { getDb, mutate, newId } from "./localStore";
@@ -1297,6 +1298,13 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     autopayRatePercent,
     connectedPayoutLandlords,
   };
+}
+
+// Local dev-mode has no real payment provider calling perfect-pay-webhook —
+// there's nothing to seed here that wouldn't be fabricated, so this always
+// reports empty. See supabaseApi.ts for the real read.
+export async function listRecentWebhookEvents(): Promise<WebhookEvent[]> {
+  return [];
 }
 
 // ---------- Users ----------

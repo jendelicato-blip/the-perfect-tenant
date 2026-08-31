@@ -298,6 +298,17 @@ export interface Dispute {
   category: DisputeCategory | null;
 }
 
+// A row only ever gets written by the real perfect-pay-webhook Edge
+// Function (service-role only, see its RLS policy) — never fabricated
+// client-side. Empty until a real payment processor is actually calling
+// that endpoint (see the migration/function comments).
+export interface WebhookEvent {
+  id: string;
+  type: string;
+  received_at: string;
+  processed_at: string | null;
+}
+
 export type RefundType = "full" | "partial";
 
 // The landlord's own record that they owe or returned money for a

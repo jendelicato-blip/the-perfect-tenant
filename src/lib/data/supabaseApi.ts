@@ -53,6 +53,7 @@ import type {
   TenantSummary,
   TenantVerificationDetails,
   VerificationStatus,
+  WebhookEvent,
 } from "@/types/domain";
 import { computeOnTimeStreak } from "@/types/domain";
 import { scoreMatch } from "@/lib/match/score";
@@ -1434,6 +1435,16 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     autopayRatePercent,
     connectedPayoutLandlords,
   };
+}
+
+// Real rows here only ever come from the perfect-pay-webhook Edge
+// Function's service-role writes — RLS (webhook_events_admin_read) is what
+// actually lets an admin read them, same as every other admin-read policy.
+export async function listRecentWebhookEvents(): Promise<WebhookEvent[]> {
+  const db = client();
+  const { data, error } = await db.from("webhook_events").select("*").order("received_at", { ascending: false }).limit(20);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as WebhookEvent[];
 }
 
 // ---------- Users ----------

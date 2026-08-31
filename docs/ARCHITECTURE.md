@@ -254,6 +254,49 @@ way they would with a real processor: `recordPayment` already upserts on the
 `(tenant_id, property_id, period_start)` unique constraint from 0005, so there's no
 webhook-retry/idempotency problem to solve because there's no webhook to retry.
 
+### Webhook architecture: the receiving half of an integration whose sending half doesn't exist yet
+
+`supabase/functions/perfect-pay-webhook/index.ts` (`0010_perfect_pay_webhook_architecture.sql`) is a
+real, production-quality Stripe webhook receiver — signature-verified, idempotent, audited — that is
+currently unreachable, and says so in its own header comment. Nothing in this app creates a Stripe
+PaymentIntent or Connect transfer for rent: Perfect Pay is Phase 1 landlord-confirmed only (same
+boundary as every other section above), so no payment processor ever calls this endpoint yet. It is
+deployed and correct so that when a real charge-creation flow and Stripe Connect keys exist, wiring
+it in is a matter of pointing Stripe's dashboard at the function's URL, not writing it from scratch.
+
+- **Signature verification**: `stripe.webhooks.constructEventAsync(body, signature, webhookSecret)`
+  against `PERFECT_PAY_WEBHOOK_SECRET` (a separate secret/endpoint from `stripe-webhook`'s
+  subscription-billing one, since these are Connect-side payment events). `verify_jwt: false`, same
+  reasoning as `stripe-webhook`: a payment provider can't send a Supabase JWT, so the signed header is
+  the only authentication.
+- **Idempotency via claim-before-process**: the handler inserts the provider's event id into
+  `webhook_events` (its own table, new in 0010) as the first thing it does. Stripe's delivery
+  guarantee is at-least-once, never exactly-once; a unique-violation on that insert means a prior
+  delivery already claimed the event, so it's skipped rather than reprocessed. `processed_at` is only
+  set after the handler finishes successfully — a row with `received_at` but no `processed_at` is a
+  genuine "claimed but crashed mid-processing" signal for manual review, never silently swallowed.
+- **Handlers never fabricate a payment fact**: `payment_intent.succeeded` upserts into
+  `payment_verifications` with `verified_by: "payment_processor"` — the same table and the same
+  natural key (`tenant_id, property_id, period_start`) `recordPayment` already uses, because 0005
+  deliberately left `verified_by` open to admit a real processor without a schema change.
+  `payment_intent.payment_failed` only ever sends a notification — a failed attempt must never create
+  a `payment_verifications` row, since that table means "affirmed, real payment." `charge.refunded`
+  and `charge.dispute.created` write into the same `payment_refunds`/`disputes` tables the in-app
+  landlord-refund and tenant-dispute flows use (a card-network chargeback is just a different
+  real-world origin for the same row shape). `payout.paid`/`payout.failed` write an audit log entry
+  and, on failure, notify the landlord — `audit_logs` existed since 0001 with nothing writing to it;
+  this is its first real writer.
+- **The required convention**: every metadata-bearing object a future charge-creation flow creates
+  must carry `metadata: { tenant_id, property_id, period_start }` — without it the handler can't
+  attribute the event and silently no-ops (correct behavior for anything outside the covered flow, but
+  a hard requirement for anything that should be).
+- **Observability**: `/admin` has a read-only "Perfect Pay™ webhook events" panel
+  (`listRecentWebhookEvents`, `webhook_events_admin_read` RLS policy — same admin-only pattern as
+  every other admin-read policy in this schema) listing recent deliveries with an explicit empty-state
+  message, since the list will show nothing until a real processor is connected. Local dev-mode's
+  `listRecentWebhookEvents` returns `[]` unconditionally — there's no local webhook sender to receive
+  from.
+
 ### Perfect Rewards™: a read-only scorecard, not a new data model
 
 `/rewards` (`Rewards.tsx`) introduces no new source of truth — it composes Rental Ready

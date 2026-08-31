@@ -264,9 +264,16 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
   connected/disconnected payout flag, exactly the shape a real provider's tokenization/Connect
   onboarding would hand back, so wiring in an actual provider (Stripe Connect or similar) later is
   additive, not a rewrite.
-- **Real Stripe Connect / any payment provider webhooks, refunds, disputes, or payouts** —
-  no webhook endpoint, idempotency handling, or payout transfer exists; "Connect payout account"
-  and turning on Autopay are instant client-side state changes, not a real onboarding/webhook flow.
+- **Real Stripe Connect payout transfers** — "Connect payout account" and turning on Autopay are
+  still instant client-side state changes, not a real onboarding flow; no money-moving payout
+  transfer exists.
+- **A real charge-creation flow to drive the webhook receiver** — `perfect-pay-webhook` (a real,
+  signature-verified, idempotent Stripe webhook Edge Function — see `docs/ARCHITECTURE.md`) is
+  deployed and receives nothing, because nothing in the app creates a Stripe PaymentIntent or
+  Connect transfer for rent yet. It's the receiving half of an integration whose sending half
+  doesn't exist: real infrastructure, not a fabricated one, and the `/admin` "Perfect Pay™ webhook
+  events" panel makes that visible (empty until a real processor is connected) rather than faking
+  activity.
 - **Platform fee deduction** — `platform_fee_config` is a real, admin-editable, landlord-disclosed
   setting, but nothing actually deducts it from anything, since there's no real payment rail moving
   money to deduct a fee from yet.
