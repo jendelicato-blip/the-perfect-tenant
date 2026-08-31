@@ -11,25 +11,26 @@ function ShareRow({ share, onRevoke }: { share: PassportShare; onRevoke: () => v
   const revoked = Boolean(share.revoked_at);
   const link = `${window.location.origin}/passport/shared/${share.share_token}`;
   return (
-    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
-      <div>
-        <p className="text-slate-700">{share.landlord_id ? "Shared with a specific landlord" : "Shared via secure link"}</p>
+    <div className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+      <p className="text-slate-700">{share.landlord_id ? "Shared with a specific landlord" : "Shared via secure link"}</p>
+      <div className="mt-1.5 flex items-center justify-between gap-3">
         {!revoked && <p className="truncate text-xs text-slate-400">{link}</p>}
         {revoked && <p className="text-xs text-red-500">Revoked</p>}
-      </div>
-      <div className="flex items-center gap-2">
         {!revoked && (
-          <button
-            className="text-xs font-medium text-brand-600 hover:underline"
-            onClick={() => navigator.clipboard?.writeText(link)}
-          >
-            Copy link
-          </button>
-        )}
-        {!revoked && (
-          <button className="text-xs font-medium text-red-600 hover:underline" onClick={onRevoke}>
-            Revoke
-          </button>
+          <div className="flex flex-none items-center gap-2">
+            <button
+              className="rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 transition hover:border-brand-300 hover:bg-brand-100"
+              onClick={() => navigator.clipboard?.writeText(link)}
+            >
+              Copy link
+            </button>
+            <button
+              className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100"
+              onClick={onRevoke}
+            >
+              Revoke
+            </button>
+          </div>
         )}
       </div>
     </div>
