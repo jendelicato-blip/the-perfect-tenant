@@ -84,7 +84,7 @@ export function Landing() {
                 <p className="text-xs text-slate-200">You're verified and ready to apply.</p>
               </div>
             </div>
-            <Card className="absolute -bottom-10 -right-4 w-64 p-4 shadow-xl sm:-right-8">
+            <Card className="relative mt-6 w-full p-4 shadow-xl lg:absolute lg:-bottom-10 lg:-right-8 lg:mt-0 lg:w-64">
               <p className="font-serif text-sm font-semibold text-ink-900">Your Perfect Rent™</p>
               <p className="mt-0.5 text-[11px] text-slate-400">Example calculation — see your real numbers on any listing</p>
               <div className="mt-3 space-y-1.5 text-sm">
