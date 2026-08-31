@@ -55,7 +55,7 @@ export function Landing() {
               <span className="text-brand-600">Rent With Confidence.</span>
             </h1>
             <p className="mt-5 max-w-md text-lg text-slate-600">
-              <InlineLogo className="h-6 w-auto" /> helps you build one verified Passport, get
+              <InlineLogo className="h-8 w-auto" /> helps you build one verified Passport, get
               matched to homes that fit, and rent with confidence — get verified once, use it
               everywhere.
             </p>

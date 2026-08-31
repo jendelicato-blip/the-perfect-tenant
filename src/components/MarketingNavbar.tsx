@@ -27,7 +27,7 @@ export function MarketingNavbar() {
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
         <Link to="/">
-          <Logo className="h-11 w-auto" />
+          <Logo className="h-14 w-auto" />
         </Link>
         <nav className="hidden items-center gap-7 md:flex">
           <NavDropdown

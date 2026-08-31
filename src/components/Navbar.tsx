@@ -49,7 +49,7 @@ export function Navbar() {
     <header className="border-b border-slate-200 bg-white">
       <div className="flex items-center justify-between gap-3 px-6 py-3">
         <Link to="/" className="flex-none">
-          <Logo className="h-9 w-auto" />
+          <Logo className="h-12 w-auto" />
         </Link>
         <nav className="hidden flex-nowrap items-center gap-1 md:flex">
           {user.role === "tenant" && tenantLinks}
