@@ -243,6 +243,7 @@ export async function listProperties(filter: PropertyFilter = {}): Promise<Prope
     .filter((p) => filter.baths === undefined || p.baths >= filter.baths)
     .filter((p) => !filter.moveInBy || new Date(p.available_date) <= new Date(filter.moveInBy))
     .filter((p) => !filter.types?.length || filter.types.includes(p.type))
+    .filter((p) => !filter.petFriendly || p.pet_policy !== "no_pets")
     .map((p) => withPhotos(db, p));
   return delay(results);
 }

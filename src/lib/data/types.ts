@@ -23,6 +23,7 @@ export interface PropertyFilter {
   baths?: number;
   moveInBy?: string;
   types?: PropertyType[];
+  petFriendly?: boolean;
 }
 
 export type NewProperty = Omit<Property, "id" | "created_at" | "status"> & {

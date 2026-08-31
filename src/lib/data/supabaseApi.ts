@@ -295,6 +295,7 @@ export async function listProperties(filter: PropertyFilter = {}): Promise<Prope
   if (filter.baths !== undefined) query = query.gte("baths", filter.baths);
   if (filter.moveInBy) query = query.lte("available_date", filter.moveInBy);
   if (filter.types?.length) query = query.in("type", filter.types);
+  if (filter.petFriendly) query = query.neq("pet_policy", "no_pets");
 
   const { data, error } = await query;
   if (error) throw new ApiError(error.message);
