@@ -122,7 +122,15 @@ Until that key is set, both spots show the same fixed photo they always have —
   characteristic.
 - **Two-sided marketplace**: tenants search properties (`/search`, `/matches`); landlords search
   tenants (`/landlord/marketplace`, "Find Your Perfect10ant") — tenants control this via a
-  `passport_visibility` setting (marketplace / applied-or-saved-only / private).
+  `passport_visibility` setting (marketplace / applied-or-saved-only / private). Every tenant
+  shown here is already Rental Ready by construction (the underlying view filters to that); an
+  added "🏅 Perfect10ant Verified only" toggle filters further — both are objective, non-protected
+  facts, never anything resembling a protected characteristic.
+- **My Tenants** (`/landlord/tenants`) — every tenant with an approved application across a
+  landlord's *whole* portfolio (not per-property), each row showing property/rent, Rental Ready,
+  Perfect10ant Verified™, Perfect Pay™ level/streak, and Autopay status, with filter toggles for
+  each. Built entirely from data already exposed elsewhere (`listApplicationsForLandlord`,
+  `listPaymentVerificationsForLandlord`, `listLandlordTenantAutopayStatus`) — no new tables.
 - **Invite to Apply** (landlord → tenant) and **"I'm Interested"** (tenant → landlord) — two
   distinct signals, both surfaced as notifications and in dedicated inboxes
   (`/invitations` for tenants, `/landlord/interests` for landlords).
@@ -287,12 +295,9 @@ Until that key is set, both spots show the same fixed photo they always have —
   compliant provider is connected.
 - **Perfect10ant Plus™** (a recurring tenant membership, separate from the one-time Verified
   purchase) — not built this pass; only the one-time tier exists.
-- **A landlord "My Tenants" directory aggregating Perfect Pay status across all of a landlord's
-  properties** — today `/landlord/rent-collection` and `/landlord/applicants` are per-property;
-  there's no single cross-property tenant roster page yet.
-- **Objective applicant filters** (Rental Ready / verified identity / screening completed /
-  Perfect Pay history available) on the Tenant Marketplace or applicant list — the badges are
-  shown per-tenant already; filtering the list by them isn't built yet.
+- **Objective applicant filters on `/landlord/applicants`** — `/landlord/tenants` and
+  `/landlord/marketplace` both have filter toggles now; the per-property applicant list (which
+  includes non-approved applications, where badges like Rental Ready matter most) doesn't yet.
 - **Rich fraud safeguards on reviews** beyond the approved-application gate (e.g. rate limiting,
   dispute handling for a review the landlord contests).
 - **Full admin analytics** (charts, churn, geographic growth, verification failure trends) — the

@@ -18,6 +18,7 @@ export function LandlordMarketplace() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [invitedTenantIds, setInvitedTenantIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -64,21 +65,38 @@ export function LandlordMarketplace() {
         Rental Ready, verified tenants actively searching for housing — matched against your listing.
       </p>
 
-      <div className="mt-4 max-w-xs">
-        <Select value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
-          <option value="">Browse without scoring</option>
-          {properties.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.address}
-            </option>
-          ))}
-        </Select>
+      <div className="mt-4 flex flex-wrap items-center gap-4">
+        <div className="max-w-xs flex-1">
+          <Select value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+            <option value="">Browse without scoring</option>
+            {properties.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.address}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <button
+          onClick={() => setVerifiedOnly((v) => !v)}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+            verifiedOnly ? "border-brand-500 bg-brand-50 text-brand-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+          }`}
+        >
+          🏅 Perfect10ant Verified only
+        </button>
       </div>
 
       <div className="mt-6 space-y-4">
         {loading && <p className="text-sm text-slate-500">Loading…</p>}
         {!loading && tenants.length === 0 && <p className="text-sm text-slate-500">No Rental Ready tenants found yet.</p>}
-        {tenants.map(({ tenant, score, reasons }) => {
+        {!loading &&
+          tenants.length > 0 &&
+          tenants.filter((t) => !verifiedOnly || t.tenant.perfect10antVerified).length === 0 && (
+            <p className="text-sm text-slate-500">No tenants match the selected filter.</p>
+          )}
+        {tenants
+          .filter((t) => !verifiedOnly || t.tenant.perfect10antVerified)
+          .map(({ tenant, score, reasons }) => {
           const rentalReady = computeRentalReady(tenant.verification);
           const invited = invitedTenantIds.has(tenant.tenant.user_id);
           return (

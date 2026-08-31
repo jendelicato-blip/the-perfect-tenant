@@ -35,6 +35,7 @@ export function Navbar() {
   const landlordLinks = (
     <>
       <Link to="/landlord" className={navLinkClass}>Listings</Link>
+      <Link to="/landlord/tenants" className={navLinkClass}>My Tenants</Link>
       <Link to="/landlord/rent-collection" className={navLinkClass}>Rent Collection</Link>
       <Link to="/landlord/payouts" className={navLinkClass}>Payouts</Link>
       <Link to="/landlord/marketplace" className={navLinkClass}>Tenant Marketplace</Link>

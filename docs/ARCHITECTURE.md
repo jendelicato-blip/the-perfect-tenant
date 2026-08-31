@@ -85,6 +85,20 @@ That fix is what QR Passport sharing (`Passport.tsx`) is built on:
   with the viewing landlord's company name/email via `landlord_public_profile` — the same view this
   section's fix introduced, reused rather than duplicated.
 
+## My Tenants + objective filters: composed from existing data, no new tables
+
+`/landlord/tenants` (`MyTenants.tsx`) needed no schema change at all — it's `listApplicationsForLandlord`
+filtered to `approved`, joined client-side against `listPropertiesForLandlord`,
+`listPaymentVerificationsForLandlord`, and `listLandlordTenantAutopayStatus`, all of which already
+existed for other pages. The only genuinely new thing is the aggregation across a landlord's whole
+portfolio in one place, plus three filter toggles (Rental Ready / Perfect10ant Verified / Autopay
+active) — each one a fact already displayed on the row, never a new derived signal. The Tenant
+Marketplace (`Marketplace.tsx`) gained one more toggle the same way: every tenant it shows is
+already Rental Ready by construction (`listMarketplaceTenants` filters to that), so a Rental Ready
+toggle there would be a no-op; "🏅 Perfect10ant Verified only" is the one that actually narrows
+anything. Both filter sets are exhaustively objective — there is structurally no protected
+characteristic anywhere in a `TenantSummary` or `TenantAutopayStatus` to filter on by mistake.
+
 ## Row Level Security model
 
 - Every tenant-owned table (`tenants`, `tenant_preferences`, `tenant_areas`, `tenant_pets`, and

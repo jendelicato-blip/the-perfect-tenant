@@ -29,6 +29,7 @@ import { LandlordPayouts } from "@/pages/landlord/Payouts";
 import { LandlordPerfectPaySettings } from "@/pages/landlord/PerfectPaySettings";
 import { LandlordPropertyForm } from "@/pages/landlord/PropertyForm";
 import { LandlordApplicants } from "@/pages/landlord/Applicants";
+import { LandlordMyTenants } from "@/pages/landlord/MyTenants";
 import { LandlordSavedTenants } from "@/pages/landlord/SavedTenants";
 import { LandlordPricing } from "@/pages/landlord/Pricing";
 import { LandlordMarketplace } from "@/pages/landlord/Marketplace";
@@ -201,6 +202,14 @@ function App() {
           element={
             <RequireRole role="landlord">
               <LandlordSavedTenants />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/landlord/tenants"
+          element={
+            <RequireRole role="landlord">
+              <LandlordMyTenants />
             </RequireRole>
           }
         />
