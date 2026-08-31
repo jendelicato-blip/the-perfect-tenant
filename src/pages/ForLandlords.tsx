@@ -5,14 +5,23 @@ import { Card } from "@/components/ui/Card";
 export function ForLandlords() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-16">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-slate-900">Stop Sorting Through Applications.</h1>
-        <p className="mx-auto mt-3 max-w-2xl text-lg text-slate-600">
-          Find verified, rental-ready tenants who already match your property requirements.
-        </p>
-        <Link to="/signup?role=landlord">
-          <Button className="mt-6">Get started</Button>
-        </Link>
+      <div className="grid items-center gap-10 lg:grid-cols-2">
+        <div className="text-center lg:text-left">
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">Stop Sorting Through Applications.</h1>
+          <p className="mx-auto mt-3 max-w-2xl text-lg text-slate-600 lg:mx-0">
+            Find verified, rental-ready tenants who already match your property requirements.
+          </p>
+          <Link to="/signup?role=landlord">
+            <Button className="mt-6">Get started</Button>
+          </Link>
+        </div>
+        <div className="overflow-hidden rounded-2xl">
+          <img
+            src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900&q=80"
+            alt="A well-kept rental property ready to list"
+            className="h-72 w-full object-cover"
+          />
+        </div>
       </div>
 
       <div className="mt-12 grid gap-6 md:grid-cols-2">
