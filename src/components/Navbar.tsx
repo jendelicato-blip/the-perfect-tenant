@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { NotificationBell } from "@/components/NotificationBell";
+import { AccountMenu } from "@/components/AccountMenu";
 import { Logo } from "@/components/Logo";
 import { MarketingNavbar } from "@/components/MarketingNavbar";
 
@@ -53,7 +54,7 @@ export function Navbar() {
         </nav>
         <div className="flex flex-none items-center gap-3">
           <NotificationBell />
-          <span className="hidden text-sm text-slate-500 sm:inline">{user.email}</span>
+          <AccountMenu />
           <Button
             variant="secondary"
             onClick={async () => {
