@@ -11,40 +11,43 @@ export function Navbar() {
 
   if (!user) return <MarketingNavbar />;
 
+  const navLinkClass =
+    "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-ink-600 transition hover:bg-white hover:text-brand-700 hover:shadow-sm";
+
   const tenantLinks = (
     <>
-      <Link to="/search" className="text-sm font-medium text-ink-400 hover:text-brand-700">Search</Link>
-      <Link to="/matches" className="text-sm font-medium text-ink-400 hover:text-brand-700">Perfect Match™</Link>
-      <Link to="/applications" className="text-sm font-medium text-ink-400 hover:text-brand-700">Applications</Link>
-      <Link to="/invitations" className="text-sm font-medium text-ink-400 hover:text-brand-700">Landlord Interest</Link>
-      <Link to="/saved" className="text-sm font-medium text-ink-400 hover:text-brand-700">Saved</Link>
-      <Link to="/messages" className="text-sm font-medium text-ink-400 hover:text-brand-700">Messages</Link>
-      <Link to="/passport" className="text-sm font-medium text-ink-400 hover:text-brand-700">My Passport</Link>
-      <Link to="/perfect-pay" className="text-sm font-medium text-ink-400 hover:text-brand-700">Perfect Pay™</Link>
-      <Link to="/rewards" className="text-sm font-medium text-ink-400 hover:text-brand-700">Rewards</Link>
-      <Link to="/partners" className="text-sm font-medium text-ink-400 hover:text-brand-700">Perfect Partners™</Link>
+      <Link to="/search" className={navLinkClass}>Search</Link>
+      <Link to="/matches" className={navLinkClass}>Perfect Match™</Link>
+      <Link to="/applications" className={navLinkClass}>Applications</Link>
+      <Link to="/invitations" className={navLinkClass}>Landlord Interest</Link>
+      <Link to="/saved" className={navLinkClass}>Saved</Link>
+      <Link to="/messages" className={navLinkClass}>Messages</Link>
+      <Link to="/passport" className={navLinkClass}>My Passport</Link>
+      <Link to="/perfect-pay" className={navLinkClass}>Perfect Pay™</Link>
+      <Link to="/rewards" className={navLinkClass}>Rewards</Link>
+      <Link to="/partners" className={navLinkClass}>Perfect Partners™</Link>
     </>
   );
 
   const landlordLinks = (
     <>
-      <Link to="/landlord" className="text-sm font-medium text-ink-400 hover:text-brand-700">Listings</Link>
-      <Link to="/landlord/marketplace" className="text-sm font-medium text-ink-400 hover:text-brand-700">Tenant Marketplace</Link>
-      <Link to="/landlord/interests" className="text-sm font-medium text-ink-400 hover:text-brand-700">Tenant Interest</Link>
-      <Link to="/landlord/saved" className="text-sm font-medium text-ink-400 hover:text-brand-700">Saved tenants</Link>
-      <Link to="/messages" className="text-sm font-medium text-ink-400 hover:text-brand-700">Messages</Link>
-      <Link to="/pricing" className="text-sm font-medium text-ink-400 hover:text-brand-700">Billing</Link>
-      {user.is_admin && <Link to="/admin" className="text-sm font-medium text-ink-400 hover:text-brand-700">Admin</Link>}
+      <Link to="/landlord" className={navLinkClass}>Listings</Link>
+      <Link to="/landlord/marketplace" className={navLinkClass}>Tenant Marketplace</Link>
+      <Link to="/landlord/interests" className={navLinkClass}>Tenant Interest</Link>
+      <Link to="/landlord/saved" className={navLinkClass}>Saved tenants</Link>
+      <Link to="/messages" className={navLinkClass}>Messages</Link>
+      <Link to="/pricing" className={navLinkClass}>Billing</Link>
+      {user.is_admin && <Link to="/admin" className={navLinkClass}>Admin</Link>}
     </>
   );
 
   return (
     <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-        <Link to="/">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
+        <Link to="/" className="flex-none">
           <Logo className="h-9 w-auto" />
         </Link>
-        <nav className="hidden items-center gap-5 md:flex">
+        <nav className="hidden flex-wrap items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 md:flex">
           {user.role === "tenant" && tenantLinks}
           {user.role === "landlord" && landlordLinks}
         </nav>
