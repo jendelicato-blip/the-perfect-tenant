@@ -59,7 +59,14 @@ export function LandlordTenantPassportView() {
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Perfect10ant Passport™</p>
           <h1 className="text-2xl font-bold text-slate-900">{summary.user.email.split("@")[0]}</h1>
         </div>
-        <RentalReadyBadge level={rentalReady.level} />
+        <div className="flex flex-col items-end gap-1">
+          <RentalReadyBadge level={rentalReady.level} />
+          {summary.perfect10antVerified && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gold-100 px-2 py-0.5 text-xs font-semibold text-gold-700">
+              🏅 Verified
+            </span>
+          )}
+        </div>
       </div>
 
       <Card className="mt-6 p-6">

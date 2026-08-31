@@ -123,6 +123,11 @@ export const {
   listRefundsForTenant,
   listRefundsForLandlord,
   listRecentWebhookEvents,
+  getVerifiedTierConfig,
+  updateVerifiedTierConfig,
+  getOwnVerifiedPurchase,
+  startVerifiedCheckout,
+  purchaseVerifiedDirect,
 } = impl;
 
 export type {

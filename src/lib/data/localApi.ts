@@ -53,6 +53,8 @@ import type {
   TenantPreferences,
   TenantSummary,
   User,
+  VerifiedPurchase,
+  VerifiedTierConfig,
   WebhookEvent,
 } from "@/types/domain";
 import { computeOnTimeStreak } from "@/types/domain";
@@ -178,6 +180,7 @@ function buildTenantSummary(db: ReturnType<typeof getDb>, tenantId: string): Ten
       eviction: db.evictionScreenings.find((v) => v.tenant_id === tenantId)?.status ?? "not_started",
       references: hasVerifiedReference ? "verified" : "not_started",
     },
+    perfect10antVerified: db.verifiedPurchases.some((p) => p.tenant_id === tenantId),
   };
 }
 
@@ -984,6 +987,46 @@ export async function updatePlatformFeeConfig(patch: Partial<Omit<PlatformFeeCon
   });
 }
 
+export async function getVerifiedTierConfig(): Promise<VerifiedTierConfig> {
+  const db = getDb();
+  return db.verifiedTierConfig;
+}
+
+export async function updateVerifiedTierConfig(patch: Partial<Omit<VerifiedTierConfig, "updated_at">>): Promise<void> {
+  mutate((db) => {
+    Object.assign(db.verifiedTierConfig, patch, { updated_at: new Date().toISOString() });
+  });
+}
+
+export async function getOwnVerifiedPurchase(tenantId: string): Promise<VerifiedPurchase | null> {
+  const db = getDb();
+  const purchases = db.verifiedPurchases.filter((p) => p.tenant_id === tenantId);
+  if (purchases.length === 0) return null;
+  return [...purchases].sort((a, b) => b.purchased_at.localeCompare(a.purchased_at))[0];
+}
+
+// No live Stripe project in local dev-mode — same as startCheckout above,
+// the UI falls back to purchaseVerifiedDirect when this returns null.
+export async function startVerifiedCheckout(): Promise<string | null> {
+  return null;
+}
+
+// Phase-1 testing fallback (no live Stripe project configured) — records a
+// real row in this dev-mode store, but no money moves, exactly like
+// setSubscriptionTier's fallback in Pricing.tsx. Never called silently: the
+// UI that calls this always discloses it's simulating a purchase.
+export async function purchaseVerifiedDirect(tenantId: string, amountPaidCents: number): Promise<void> {
+  mutate((db) => {
+    db.verifiedPurchases.push({
+      id: newId("vp"),
+      tenant_id: tenantId,
+      amount_paid_cents: amountPaidCents,
+      stripe_session_id: null,
+      purchased_at: new Date().toISOString(),
+    });
+  });
+}
+
 export async function updatePerfectPayMilestone(level: PerfectPayLevel, consecutivePaymentsRequired: number): Promise<void> {
   mutate((db) => {
     const m = db.perfectPayMilestones.find((x) => x.level === level);
@@ -1274,6 +1317,8 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   const autopayEnrolledTenants = db.tenants.filter((t) => t.auto_payment_enrolled).length;
   const autopayRatePercent = db.tenants.length ? Math.round((autopayEnrolledTenants / db.tenants.length) * 100) : 0;
   const connectedPayoutLandlords = db.landlordPayoutAccounts.filter((a) => a.connected).length;
+  const perfect10antVerifiedTenants = new Set(db.verifiedPurchases.map((p) => p.tenant_id)).size;
+  const verifiedRevenueCents = db.verifiedPurchases.reduce((sum, p) => sum + p.amount_paid_cents, 0);
 
   return {
     totalTenants: db.tenants.length,
@@ -1297,6 +1342,8 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     autopayEnrolledTenants,
     autopayRatePercent,
     connectedPayoutLandlords,
+    perfect10antVerifiedTenants,
+    verifiedRevenueCents,
   };
 }
 

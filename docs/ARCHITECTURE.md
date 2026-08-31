@@ -309,6 +309,27 @@ real partner categories (see below) now render as actual, working offer cards ra
 placeholders — the placeholder styling stays reserved for whichever categories still have no real
 partnership behind them.
 
+### Perfect10ant Verified™: a real one-time purchase, honest about what it buys
+
+`/verified` (`Verified.tsx`, `0011_perfect10ant_verified.sql`) is a paid, one-time verification-tier
+upgrade — distinct from a landlord's recurring `SubscriptionPlan`. Unlike Perfect Pay Autopay, this
+purchase itself is real, not simulated: `stripe-checkout` opens a genuine Stripe Checkout session in
+`mode: "payment"` (not a fixed Stripe Price object — `price_data` is built from
+`verified_tier_config.price_cents` at checkout time, so admin-edited pricing is what's actually
+charged, never a price baked into Stripe that could drift out of sync), and `stripe-webhook` records
+the completed purchase into `verified_purchases`, idempotently keyed on `stripe_session_id`. The
+Phase 1 fallback (no live Stripe project configured) is `purchaseVerifiedDirect` — a real row, no
+money moved, exactly the same "Phase 1 testing" pattern `Pricing.tsx`'s subscription checkout
+already uses.
+
+What purchasing does NOT do: it never marks `CreditScreening`/`BackgroundScreening`/
+`EvictionScreening` "verified" on its own — those still only ever move to "verified" once a real
+compliant screening provider is connected (none is, in this phase). Buying Verified is honest about
+buying independent verification, not about instantly producing one. `tenant_public_profile` (0004)
+gained one more visibility-gated boolean, `perfect10ant_verified`, reusing its exact existing WHERE
+clause — the same authorization a landlord's view of any other Passport field already goes through,
+so a landlord only sees the badge when they're already authorized to see the rest of that Passport.
+
 ## Perfect Partners™: the advertising/monetization engine
 
 One rule governs everything in this section, enforced structurally rather than by convention:

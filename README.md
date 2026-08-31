@@ -80,6 +80,12 @@ Until those secrets are set, `stripe-checkout` returns an error and the Pricing 
 to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's read from the
 `subscription_plans` table, editable at `/admin` by an account with `users.is_admin = true`.
 
+The same two secrets (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) also power a tenant's
+**Perfect10ant Verified™** one-time purchase (`/verified`) — no separate Stripe price needs
+creating for it, since it charges a dynamic amount read from `verified_tier_config`
+(admin-editable at `/admin`) at checkout time. Until those secrets are set, the Verified page
+falls back to the same Phase 1 direct-purchase stub as subscriptions above.
+
 ### Rotating stock photos (optional)
 
 The Landing and ForLandlords hero photos can rotate to a fresh live Unsplash photo roughly weekly
@@ -140,6 +146,19 @@ Until that key is set, both spots show the same fixed photo they always have —
   `payment_verifications` rows a landlord actually confirmed (`landlord/applicants` → "record rent
   payment"). Nothing here is auto-promised: a payment is "verified" only when a landlord (the only
   legitimate source implemented in this pass) has confirmed it.
+- **Perfect10ant Verified™** (`/verified`, `0011_perfect10ant_verified.sql`) — a paid, one-time
+  verification-tier purchase (price/name/description admin-editable at `/admin`, never hard-coded).
+  Unlike Perfect Pay Autopay, the purchase itself is real: `stripe-checkout` opens a genuine Stripe
+  Checkout session in one-time `payment` mode, priced from the live admin config via `price_data`
+  (never a fixed Stripe Price object, so an admin price change is what's actually charged next
+  purchase); `stripe-webhook` records it into `verified_purchases`. A "Your Perfect10ant Verified™
+  value" calculator shows verification cost vs. potential Perfect Rent™ savings — using a real
+  quote from the tenant's current property when they have one, otherwise a clearly-labeled example
+  — and always as "potential," never a guarantee. Purchasing never marks credit/background/eviction
+  screening "verified" on its own; those still require a real compliant provider (none is connected
+  in this phase). The Passport, Verification Center, and a landlord's view of that tenant's Passport
+  all show the same 🏅 badge once purchased, gated by the same visibility rule as every other
+  Passport field.
 - **Perfect Rewards™** (`/rewards`) — a scorecard combining Rental Ready status, Perfect Pay
   level, verified rental history, and real (never invented) potential savings from Perfect Rent™,
   plus professional (non-gamified) achievement badges and clearly-labeled "Coming Soon" future
@@ -256,6 +275,17 @@ Until that key is set, both spots show the same fixed photo they always have —
 ## What's deferred (not built in this pass)
 
 - **Live verification providers** (Phase 2) — everything here is placeholder status data.
+  Perfect10ant Verified™ is a real one-time purchase (see above), but purchasing it doesn't
+  change this: credit/background/eviction screening still only move to "verified" once a real
+  compliant provider is connected.
+- **Perfect10ant Plus™** (a recurring tenant membership, separate from the one-time Verified
+  purchase) — not built this pass; only the one-time tier exists.
+- **A landlord "My Tenants" directory aggregating Perfect Pay status across all of a landlord's
+  properties** — today `/landlord/rent-collection` and `/landlord/applicants` are per-property;
+  there's no single cross-property tenant roster page yet.
+- **Objective applicant filters** (Rental Ready / verified identity / screening completed /
+  Perfect Pay history available) on the Tenant Marketplace or applicant list — the badges are
+  shown per-tenant already; filtering the list by them isn't built yet.
 - **Rich fraud safeguards on reviews** beyond the approved-application gate (e.g. rate limiting,
   dispute handling for a review the landlord contests).
 - **Full admin analytics** (charts, churn, geographic growth, verification failure trends) — the

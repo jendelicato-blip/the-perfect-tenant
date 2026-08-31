@@ -4,7 +4,7 @@ import type { AdminMetrics } from "@/lib/data/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Field";
-import type { PerfectPayMilestone, PlatformFeeConfig, SubscriptionPlan, WebhookEvent } from "@/types/domain";
+import type { PerfectPayMilestone, PlatformFeeConfig, SubscriptionPlan, VerifiedTierConfig, WebhookEvent } from "@/types/domain";
 import { PerfectPartnersAdminSection } from "@/pages/admin/PerfectPartnersAdmin";
 
 function StatTile({ label, value }: { label: string; value: string | number }) {
@@ -21,24 +21,28 @@ export function AdminDashboard() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
   const [feeConfig, setFeeConfig] = useState<PlatformFeeConfig | null>(null);
+  const [verifiedConfig, setVerifiedConfig] = useState<VerifiedTierConfig | null>(null);
   const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [savingMilestone, setSavingMilestone] = useState<string | null>(null);
   const [savingFee, setSavingFee] = useState(false);
+  const [savingVerified, setSavingVerified] = useState(false);
 
   async function load() {
-    const [m, p, ms, fee, events] = await Promise.all([
+    const [m, p, ms, fee, events, verified] = await Promise.all([
       api.getAdminMetrics(),
       api.listSubscriptionPlans(),
       api.listPerfectPayMilestones(),
       api.getPlatformFeeConfig(),
       api.listRecentWebhookEvents(),
+      api.getVerifiedTierConfig(),
     ]);
     setMetrics(m);
     setPlans([...p].sort((a, b) => a.price_cents - b.price_cents));
     setMilestones([...ms].sort((a, b) => a.sort_order - b.sort_order));
     setFeeConfig(fee);
     setWebhookEvents(events);
+    setVerifiedConfig(verified);
   }
 
   useEffect(() => {
@@ -72,6 +76,16 @@ export function AdminDashboard() {
       await load();
     } finally {
       setSavingFee(false);
+    }
+  }
+
+  async function saveVerifiedConfig(patch: Partial<Omit<VerifiedTierConfig, "updated_at">>) {
+    setSavingVerified(true);
+    try {
+      await api.updateVerifiedTierConfig(patch);
+      await load();
+    } finally {
+      setSavingVerified(false);
     }
   }
 
@@ -111,6 +125,8 @@ export function AdminDashboard() {
         <StatTile label="Autopay-enrolled tenants" value={metrics.autopayEnrolledTenants} />
         <StatTile label="Autopay rate" value={`${metrics.autopayRatePercent}%`} />
         <StatTile label="Landlords with payouts connected" value={metrics.connectedPayoutLandlords} />
+        <StatTile label="Perfect10ant Verified™ tenants" value={metrics.perfect10antVerifiedTenants} />
+        <StatTile label="Verified revenue" value={`$${(metrics.verifiedRevenueCents / 100).toLocaleString()}`} />
       </div>
 
       {feeConfig && (
@@ -158,6 +174,44 @@ export function AdminDashboard() {
               onClick={() => saveFeeConfig({ percent_fee: feeConfig.percent_fee, flat_fee_cents: feeConfig.flat_fee_cents, fee_payer: feeConfig.fee_payer })}
             >
               {savingFee ? "Saving…" : "Save"}
+            </Button>
+          </Card>
+        </>
+      )}
+
+      {verifiedConfig && (
+        <>
+          <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect10ant Verified™ pricing</h2>
+          <p className="text-sm text-slate-600">
+            A one-time tenant purchase, never hard-coded — Stripe charges exactly this amount at checkout time (see
+            supabase/functions/stripe-checkout).
+          </p>
+          <Card className="mt-4 flex flex-wrap items-center gap-4 p-4">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              Price ($)
+              <Input
+                type="number"
+                min={0}
+                step={0.01}
+                value={verifiedConfig.price_cents / 100}
+                onChange={(e) => setVerifiedConfig({ ...verifiedConfig, price_cents: Math.round(Number(e.target.value) * 100) })}
+                className="w-24"
+              />
+            </label>
+            <label className="flex flex-1 items-center gap-2 text-sm text-slate-600">
+              Name
+              <Input
+                value={verifiedConfig.name}
+                onChange={(e) => setVerifiedConfig({ ...verifiedConfig, name: e.target.value })}
+                className="flex-1"
+              />
+            </label>
+            <Button
+              variant="secondary"
+              disabled={savingVerified}
+              onClick={() => saveVerifiedConfig({ price_cents: verifiedConfig.price_cents, name: verifiedConfig.name, description: verifiedConfig.description })}
+            >
+              {savingVerified ? "Saving…" : "Save"}
             </Button>
           </Card>
         </>

@@ -1,7 +1,15 @@
-// Creates a Stripe Checkout session for a landlord's chosen subscription tier.
+// Creates a Stripe Checkout session for either:
+//   (a) a landlord's chosen recurring subscription tier ({ tier }), or
+//   (b) a tenant's one-time Perfect10ant Verified™ purchase ({ product:
+//       "verified" }) — a real one-time charge, mode "payment", priced
+//       dynamically from verified_tier_config so admin-set pricing is never
+//       baked into a fixed Stripe Price object (see supabase/migrations/
+//       0011_perfect10ant_verified.sql and the note on VerifiedTierConfig /
+//       VerifiedPurchase in src/types/domain.ts for what this does and
+//       doesn't claim).
 // Deploy with `verify_jwt = true` (the default) — the caller's Supabase JWT
-// is what identifies which landlord is checking out; Stripe itself is never
-// trusted with that decision.
+// is what identifies which landlord/tenant is checking out; Stripe itself is
+// never trusted with that decision.
 //
 // Required secrets (set via `supabase secrets set` or the dashboard):
 //   STRIPE_SECRET_KEY        sk_test_... (or live key in production)
@@ -38,14 +46,56 @@ Deno.serve(async (req: Request) => {
   if (userError || !userData.user) {
     return new Response(JSON.stringify({ error: "Not authenticated." }), { status: 401 });
   }
-  const landlordId = userData.user.id;
+  const userId = userData.user.id;
 
+  const body = await req.json();
+  const siteUrl = Deno.env.get("PUBLIC_SITE_URL") ?? "http://localhost:5173";
+
+  if (body.product === "verified") {
+    const { data: tenant } = await supabase.from("tenants").select("user_id").eq("user_id", userId).single();
+    if (!tenant) {
+      return new Response(JSON.stringify({ error: "Only tenants can purchase Perfect10ant Verified." }), { status: 403 });
+    }
+
+    const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: config } = await service.from("verified_tier_config").select("*").eq("id", "default").single();
+    if (!config) {
+      return new Response(JSON.stringify({ error: "Perfect10ant Verified is not configured." }), { status: 500 });
+    }
+
+    // price_data (not a fixed Stripe Price id) so the admin-configurable
+    // price in verified_tier_config is what's actually charged, not a price
+    // baked into a Stripe object that could drift out of sync with it.
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer_email: userData.user.email,
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: config.price_cents,
+            product_data: { name: config.name, description: config.description },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${siteUrl}/verified?checkout=success`,
+      cancel_url: `${siteUrl}/verified?checkout=cancelled`,
+      metadata: { tenant_id: userId, product: "verified" },
+    });
+
+    return new Response(JSON.stringify({ url: session.url }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const landlordId = userId;
   const { data: landlord } = await supabase.from("landlords").select("user_id").eq("user_id", landlordId).single();
   if (!landlord) {
     return new Response(JSON.stringify({ error: "Only landlords can start checkout." }), { status: 403 });
   }
 
-  const { tier } = await req.json();
+  const { tier } = body;
   const priceId = PRICE_BY_TIER[tier];
   if (!priceId) {
     return new Response(JSON.stringify({ error: `No Stripe price configured for tier "${tier}".` }), { status: 400 });
@@ -68,7 +118,6 @@ Deno.serve(async (req: Request) => {
     await service.from("subscriptions").update({ stripe_customer_id: customerId }).eq("landlord_id", landlordId);
   }
 
-  const siteUrl = Deno.env.get("PUBLIC_SITE_URL") ?? "http://localhost:5173";
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,

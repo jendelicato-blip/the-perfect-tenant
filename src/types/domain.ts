@@ -136,6 +136,38 @@ export interface EvictionScreening {
   completed_at: string | null;
 }
 
+// ---------- Perfect10ant Verified™ (paid one-time verification tier) ----------
+//
+// A one-time purchase, distinct from a landlord's recurring SubscriptionPlan
+// below. Purchasing does NOT itself perform or fabricate any screening
+// result — it's a real Stripe one-time charge (see supabase/functions/
+// stripe-checkout, stripe-webhook) that unlocks eligibility for Perfect
+// Rent™ incentives requiring "verified" status and marks the Passport as
+// Perfect10ant Verified. The underlying CreditScreening/BackgroundScreening/
+// EvictionScreening rows above still only ever move to "verified" once a
+// real compliant screening provider is connected (Phase 1: none is) — this
+// purchase is honest about buying independent verification, not about
+// instantly producing one.
+export interface VerifiedTierConfig {
+  price_cents: number;
+  name: string;
+  description: string;
+  updated_at: string;
+}
+
+// Only ever written by the stripe-webhook Edge Function (service role) once
+// Stripe confirms payment, or — when no live Stripe project is configured
+// (Phase 1 testing, same as SubscriptionPlan checkout) — directly by the
+// tenant via purchaseVerifiedDirect, clearly disclosed as a test/simulated
+// purchase in that path. Never inferred, never granted for free.
+export interface VerifiedPurchase {
+  id: string;
+  tenant_id: string;
+  amount_paid_cents: number;
+  stripe_session_id: string | null;
+  purchased_at: string;
+}
+
 export type SubscriptionTier = "starter" | "growth" | "portfolio";
 
 export interface Landlord {
@@ -458,6 +490,12 @@ export interface TenantSummary {
   preferences: TenantPreferences;
   areas: TenantArea[];
   verification: TenantVerificationSummary;
+  // Whether this tenant has ever completed a Perfect10ant Verified™
+  // purchase (see VerifiedPurchase below) — surfaced through
+  // tenant_public_profile the same visibility-gated way every other field
+  // here is, so a landlord only sees it when authorized to see the rest of
+  // this Passport.
+  perfect10antVerified: boolean;
 }
 
 // The tenant's own Verification Center / Passport needs the full detail

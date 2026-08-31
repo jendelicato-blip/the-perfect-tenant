@@ -175,9 +175,19 @@ export function TenantPassport() {
             <p className="text-xs uppercase tracking-wide text-slate-400">Verified Leases</p>
             <p className="mt-1 text-sm font-semibold text-ink-900">{verifiedLeaseCount}</p>
           </div>
-          <div className="col-span-2 sm:col-span-2">
+          <div>
             <p className="text-xs uppercase tracking-wide text-slate-400">Rental Ready</p>
             <div className="mt-1"><RentalReadyBadge level={rentalReady.level} /></div>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-400">Perfect10ant Verified™</p>
+            {summary.perfect10antVerified ? (
+              <p className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-gold-700">🏅 Verified</p>
+            ) : (
+              <Link to="/verified" className="mt-1 inline-block text-sm font-medium text-brand-700 hover:underline">
+                Get Verified →
+              </Link>
+            )}
           </div>
         </div>
         <Link to="/perfect-pay" className="mt-3 inline-block text-xs font-medium text-brand-700 hover:underline">

@@ -75,6 +75,8 @@ export interface AdminMetrics {
   autopayEnrolledTenants: number;
   autopayRatePercent: number;
   connectedPayoutLandlords: number;
+  perfect10antVerifiedTenants: number;
+  verifiedRevenueCents: number;
 }
 
 // A tenant's current rental for Perfect Pay purposes — the property behind

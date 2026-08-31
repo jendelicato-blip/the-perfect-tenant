@@ -40,6 +40,8 @@ import type {
   TenantPreferences,
   TenantReference,
   User,
+  VerifiedPurchase,
+  VerifiedTierConfig,
 } from "@/types/domain";
 
 // Seed data used by the local dev-mode data layer (no Supabase project
@@ -335,6 +337,21 @@ export const seedPlatformFeeConfig: PlatformFeeConfig = {
   fee_payer: "landlord",
   updated_at: "2026-08-01T00:00:00Z",
 };
+
+// ---------- Perfect10ant Verified™ ----------
+
+export const seedVerifiedTierConfig: VerifiedTierConfig = {
+  price_cents: 2999,
+  name: "Perfect10ant Verified",
+  description: "Independent verification of your identity, income, and rental history.",
+  updated_at: "2026-08-01T00:00:00Z",
+};
+
+// Amara has already purchased Verified (demoing the badge/upsell-complete
+// state); Devon hasn't (demoing the upsell-still-showing state).
+export const seedVerifiedPurchases: VerifiedPurchase[] = [
+  { id: "vp-1", tenant_id: "u-tenant-1", amount_paid_cents: 2999, stripe_session_id: null, purchased_at: "2026-08-10T00:00:00Z" },
+];
 
 // Dev-mode only: plaintext passwords for the seeded demo accounts.
 // Never do this against a real backend — Supabase Auth handles hashing there.

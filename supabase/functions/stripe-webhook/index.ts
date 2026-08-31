@@ -1,8 +1,10 @@
-// Handles Stripe webhook events for subscription lifecycle updates. Deploy
-// with `verify_jwt = false` — Stripe cannot send a Supabase JWT; the
-// `Stripe-Signature` header (verified below against STRIPE_WEBHOOK_SECRET) is
-// what authenticates the caller instead. Register this function's URL as a
-// webhook endpoint in the Stripe dashboard listening for:
+// Handles Stripe webhook events for both subscription lifecycle updates AND
+// Perfect10ant Verified™ one-time purchases (see stripe-checkout for how
+// each is created). Deploy with `verify_jwt = false` — Stripe cannot send a
+// Supabase JWT; the `Stripe-Signature` header (verified below against
+// STRIPE_WEBHOOK_SECRET) is what authenticates the caller instead. Register
+// this function's URL as a webhook endpoint in the Stripe dashboard
+// listening for:
 //   checkout.session.completed, customer.subscription.updated,
 //   customer.subscription.deleted
 //
@@ -60,6 +62,28 @@ Deno.serve(async (req: Request) => {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
+
+      if (session.metadata?.product === "verified") {
+        const tenantId = session.metadata.tenant_id;
+        if (tenantId) {
+          // onConflict on stripe_session_id (unique) makes this idempotent
+          // against Stripe's at-least-once delivery — a redelivered event
+          // updates the same row instead of recording a second purchase.
+          await service
+            .from("verified_purchases")
+            .upsert(
+              { tenant_id: tenantId, amount_paid_cents: session.amount_total ?? 0, stripe_session_id: session.id },
+              { onConflict: "stripe_session_id" },
+            );
+          await service.from("notifications").insert({
+            user_id: tenantId,
+            type: "verified_purchase_completed",
+            body: "You're now Perfect10ant Verified™ — your Passport reflects it.",
+          });
+        }
+        break;
+      }
+
       const landlordId = session.metadata?.landlord_id;
       if (landlordId && session.subscription) {
         const subscription = await stripe.subscriptions.retrieve(session.subscription as string);

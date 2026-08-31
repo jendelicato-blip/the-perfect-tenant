@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
 import { RentalReadyBadge, VerificationBadge } from "@/components/ui/Badge";
@@ -90,6 +91,19 @@ export function TenantVerificationCenter() {
         verified unless an actual verification process returned a successful result — Phase 1 uses placeholder
         statuses since no live provider is connected yet.
       </p>
+
+      {summary.perfect10antVerified ? (
+        <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-gold-100 px-3 py-1 text-xs font-semibold text-gold-700">
+          🏅 Perfect10ant Verified
+        </p>
+      ) : (
+        <Link
+          to="/verified"
+          className="mt-3 inline-block text-sm font-semibold text-brand-700 underline decoration-2 underline-offset-4 hover:text-brand-800"
+        >
+          Get Perfect10ant Verified™ — independent verification, faster applications →
+        </Link>
+      )}
 
       <Card className="mt-6 divide-y divide-slate-100 p-6">
         {rows.map((row) => (

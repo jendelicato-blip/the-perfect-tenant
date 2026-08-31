@@ -53,6 +53,8 @@ import type {
   TenantSummary,
   TenantVerificationDetails,
   VerificationStatus,
+  VerifiedPurchase,
+  VerifiedTierConfig,
   WebhookEvent,
 } from "@/types/domain";
 import { computeOnTimeStreak } from "@/types/domain";
@@ -210,6 +212,7 @@ function summaryFromProfileRow(row: Record<string, unknown>, areas: TenantArea[]
       eviction: row.eviction_status as VerificationStatus,
       references: row.references_verified ? "verified" : "not_started",
     },
+    perfect10antVerified: Boolean(row.perfect10ant_verified),
   };
 }
 
@@ -1099,6 +1102,54 @@ export async function updatePlatformFeeConfig(patch: Partial<Omit<PlatformFeeCon
   await db.from("platform_fee_config").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", 1);
 }
 
+export async function getVerifiedTierConfig(): Promise<VerifiedTierConfig> {
+  const db = client();
+  const { data, error } = await db.from("verified_tier_config").select("*").eq("id", "default").single();
+  if (error) throw new ApiError(error.message);
+  return data as VerifiedTierConfig;
+}
+
+export async function updateVerifiedTierConfig(patch: Partial<Omit<VerifiedTierConfig, "updated_at">>): Promise<void> {
+  const db = client();
+  await db.from("verified_tier_config").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", "default");
+}
+
+export async function getOwnVerifiedPurchase(tenantId: string): Promise<VerifiedPurchase | null> {
+  const db = client();
+  const { data } = await db
+    .from("verified_purchases")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("purchased_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as VerifiedPurchase | null) ?? null;
+}
+
+// Same real-checkout-with-a-null-fallback shape as startCheckout above: the
+// Edge Function returns null when Stripe isn't configured, so the Verified
+// page can fall back to purchaseVerifiedDirect instead of erroring. Takes no
+// tenantId — the Edge Function identifies the caller from their Supabase JWT.
+export async function startVerifiedCheckout(): Promise<string | null> {
+  const db = client();
+  const { data, error } = await db.functions.invoke<{ url?: string; error?: string }>("stripe-checkout", {
+    body: { product: "verified" },
+  });
+  if (error || !data?.url) return null;
+  return data.url;
+}
+
+// Phase-1 testing fallback (no live Stripe project configured) — a real
+// insert (verified_purchases_owner_insert RLS lets a tenant write their own
+// row), but no money moves, exactly like setSubscriptionTier's fallback
+// above. Never called silently: the UI that calls this always discloses
+// it's simulating a purchase.
+export async function purchaseVerifiedDirect(tenantId: string, amountPaidCents: number): Promise<void> {
+  const db = client();
+  const { error } = await db.from("verified_purchases").insert({ tenant_id: tenantId, amount_paid_cents: amountPaidCents });
+  if (error) throw new ApiError(error.message);
+}
+
 export async function listLandlordTenantAutopayStatus(landlordId: string): Promise<TenantAutopayStatus[]> {
   const db = client();
   const { data, error } = await db.from("landlord_visible_autopay").select("tenant_id, auto_payment_enrolled").eq("landlord_id", landlordId);
@@ -1412,6 +1463,10 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   const autopayRatePercent = tenants.count ? Math.round((autopayEnrolledTenants / tenants.count) * 100) : 0;
   const connectedPayoutLandlords = (payoutAccounts.data ?? []).filter((a) => a.connected).length;
 
+  const { data: verifiedPurchaseRows } = await db.from("verified_purchases").select("tenant_id, amount_paid_cents");
+  const perfect10antVerifiedTenants = new Set((verifiedPurchaseRows ?? []).map((p) => p.tenant_id)).size;
+  const verifiedRevenueCents = (verifiedPurchaseRows ?? []).reduce((sum, p) => sum + p.amount_paid_cents, 0);
+
   return {
     totalTenants: tenants.count ?? 0,
     rentalReadyTenants,
@@ -1434,6 +1489,8 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     autopayEnrolledTenants,
     autopayRatePercent,
     connectedPayoutLandlords,
+    perfect10antVerifiedTenants,
+    verifiedRevenueCents,
   };
 }
 
