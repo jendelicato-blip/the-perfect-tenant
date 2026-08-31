@@ -12,7 +12,7 @@ export function Navbar() {
   if (!user) return <MarketingNavbar />;
 
   const navLinkClass =
-    "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-ink-600 transition hover:bg-white hover:text-brand-700 hover:shadow-sm";
+    "inline-flex items-center whitespace-nowrap rounded-md border border-slate-200 px-2 py-1 text-[13px] font-medium text-ink-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700";
 
   const tenantLinks = (
     <>
@@ -43,15 +43,15 @@ export function Navbar() {
 
   return (
     <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
+      <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3 px-4 py-3">
         <Link to="/" className="flex-none">
           <Logo className="h-9 w-auto" />
         </Link>
-        <nav className="hidden flex-wrap items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 md:flex">
+        <nav className="hidden flex-nowrap items-center gap-1 md:flex">
           {user.role === "tenant" && tenantLinks}
           {user.role === "landlord" && landlordLinks}
         </nav>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-none items-center gap-3">
           <NotificationBell />
           <span className="hidden text-sm text-slate-500 sm:inline">{user.email}</span>
           <Button
