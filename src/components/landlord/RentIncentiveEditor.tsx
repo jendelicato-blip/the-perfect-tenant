@@ -1,20 +1,21 @@
-import { INCENTIVE_LABELS, type IncentiveType, type JurisdictionRule } from "@/types/domain";
+import { INCENTIVE_LABELS, type IncentiveFundingSource, type IncentiveType, type JurisdictionRule } from "@/types/domain";
 import { Input } from "@/components/ui/Field";
 
 export interface IncentiveFormState {
   enabled: boolean;
   discountDollars: number;
   requiresLeaseMonths: number;
+  fundedBy: IncentiveFundingSource;
 }
 
 export type IncentiveFormValue = Record<IncentiveType, IncentiveFormState>;
 
 export const EMPTY_INCENTIVE_FORM: IncentiveFormValue = {
-  passport_verified: { enabled: false, discountDollars: 25, requiresLeaseMonths: 0 },
-  longer_lease: { enabled: false, discountDollars: 50, requiresLeaseMonths: 18 },
-  auto_payment: { enabled: false, discountDollars: 25, requiresLeaseMonths: 0 },
-  rental_history: { enabled: false, discountDollars: 25, requiresLeaseMonths: 0 },
-  upfront_rent: { enabled: false, discountDollars: 100, requiresLeaseMonths: 0 },
+  passport_verified: { enabled: false, discountDollars: 25, requiresLeaseMonths: 0, fundedBy: "landlord" },
+  longer_lease: { enabled: false, discountDollars: 50, requiresLeaseMonths: 18, fundedBy: "landlord" },
+  auto_payment: { enabled: false, discountDollars: 25, requiresLeaseMonths: 0, fundedBy: "landlord" },
+  rental_history: { enabled: false, discountDollars: 25, requiresLeaseMonths: 0, fundedBy: "landlord" },
+  upfront_rent: { enabled: false, discountDollars: 100, requiresLeaseMonths: 0, fundedBy: "landlord" },
 };
 
 const INCENTIVE_TYPES: IncentiveType[] = ["passport_verified", "longer_lease", "auto_payment", "rental_history", "upfront_rent"];
@@ -49,10 +50,11 @@ export function RentIncentiveEditor({
     onChange({ ...value, [type]: { ...value[type], ...patch } });
   }
 
-  const enabledTotal = INCENTIVE_TYPES.filter((t) => value[t].enabled && !isBlocked(t) && t !== "upfront_rent").reduce(
-    (sum, t) => sum + value[t].discountDollars,
-    0,
-  );
+  const enabledTypes = INCENTIVE_TYPES.filter((t) => value[t].enabled && !isBlocked(t) && t !== "upfront_rent");
+  const enabledTotal = enabledTypes.reduce((sum, t) => sum + value[t].discountDollars, 0);
+  const landlordFundedTotal = enabledTypes
+    .filter((t) => value[t].fundedBy === "landlord")
+    .reduce((sum, t) => sum + value[t].discountDollars, 0);
   const maxPotentialRent = Math.max(0, baseRentDollars - enabledTotal);
 
   return (
@@ -97,6 +99,17 @@ export function RentIncentiveEditor({
                     />
                   </label>
                 )}
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  Who funds this
+                  <select
+                    value={v.fundedBy}
+                    onChange={(e) => update(type, { fundedBy: e.target.value as IncentiveFundingSource })}
+                    className="rounded-lg border border-slate-300 px-2 py-1"
+                  >
+                    <option value="landlord">You (reduces your payout)</option>
+                    <option value="platform">Perfect10ant (you're paid in full)</option>
+                  </select>
+                </label>
               </div>
             )}
           </div>
@@ -119,11 +132,15 @@ export function RentIncentiveEditor({
         </div>
         {enabledTotal > 0 && (
           <p className="mt-3 border-t border-brand-100 pt-2 text-xs text-slate-500">
-            Your cost if every eligible tenant qualifies for all enabled incentives: ${(enabledTotal * 12).toLocaleString()}/year —
+            Your cost if every eligible tenant qualifies for all landlord-funded incentives: ${(landlordFundedTotal * 12).toLocaleString()}/year
+            {landlordFundedTotal < enabledTotal && " (the rest is Perfect10ant-funded — you're paid your full rent either way)"} —
             compared with the potential cost of one vacant month (${baseRentDollars.toLocaleString()}). Actual outcomes
             depend on your market; this isn't a guaranteed return.
           </p>
         )}
+        <p className="mt-3 border-t border-brand-100 pt-2 text-xs text-slate-500">
+          Incentives are subject to applicable laws, lease terms, and platform rules.
+        </p>
       </div>
     </div>
   );

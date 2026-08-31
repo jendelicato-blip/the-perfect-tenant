@@ -171,6 +171,41 @@ never hard-coded in the client) to produce the tenant's current level and the ne
 then, inserts a `reward_events` row and fires a one-time notification (`notifyOnce`) — a milestone
 is only ever recorded once a landlord's confirmation actually reaches it, never speculatively.
 
+### Perfect Pay™ Autopay: a simulated payment-provider layer, not a new payment fact
+
+The Autopay work added in this pass (`PerfectPaySetup.tsx`, `/perfect-pay`, `/landlord/rent-collection`,
+`/landlord/perfect-pay-settings`) is deliberately a UX/data layer sitting *on top of* the existing
+landlord-confirmed `payment_verifications` mechanism above — it never becomes a second, competing
+source of truth for "did the tenant pay." `Tenant.payment_method_type`/`payment_method_last4` are
+what a real tokenizing payment provider (Stripe Connect or similar — see the migration comment in
+`0007_perfect_pay_autopay.sql`) would hand back; no real bank/card number is ever collected. Turning
+Autopay on/off still only ever flips `auto_payment_enrolled`, the same field the Perfect Rent™ engine
+already read before this phase — so a tenant who enables Autopay immediately qualifies for any
+`auto_payment` incentive the same way they always did, and a "next payment" shown on `/perfect-pay`
+is a projection computed from `computeNextAutopayDate` + the current Perfect Rent™ quote, never a row
+implying money has moved. Similarly, `landlord_payout_accounts.connected` is a simulated instant flag
+— a real integration would redirect to the provider's own onboarding and only flip this from a
+webhook once that flow actually completes.
+
+`RentIncentive.funded_by` (`landlord` | `platform`) makes explicit who actually absorbs an enabled
+incentive's cost — `RentIncentiveEditor.tsx`'s "Your cost" preview only sums landlord-funded
+incentives, since a platform-funded one costs the landlord nothing (they're paid full rent either
+way). `platform_fee_config` is a singleton config row (same pattern as `ad_frequency_rules`),
+admin-editable at `/admin`, disclosed to landlords at `/landlord/perfect-pay-settings` — never
+hard-coded, and importantly never actually deducted anywhere in this phase since there's no real
+payment rail moving money to deduct a fee from.
+
+`/landlord/rent-collection`'s per-tenant Perfect Pay level and `LandlordTenantPassportView.tsx`'s
+restricted Perfect Pay card both deliberately read only `listPaymentVerificationsForLandlord` (RLS:
+`landlord_id = auth.uid()`) — i.e. only payments *this* landlord themselves confirmed. A tenant's
+Perfect Pay history is designed to follow them across properties (their milestone is computed from
+`payment_verifications.tenant_id`, not scoped to one property), but making that history visible to a
+landlord who *didn't* record any of it — e.g. a stranger landlord scanning a Passport share link —
+needs a real public-safe aggregate view (like `tenant_public_profile` for verification statuses).
+That view doesn't exist yet, so a landlord with zero payment_verifications rows for a tenant simply
+sees no Perfect Pay card at all, rather than an incorrect "New" showing zero history for a tenant who
+may have an established one elsewhere.
+
 ### Perfect Rewards™: a read-only scorecard, not a new data model
 
 `/rewards` (`Rewards.tsx`) introduces no new source of truth — it composes Rental Ready

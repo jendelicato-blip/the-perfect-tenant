@@ -72,6 +72,19 @@ export interface AdminMetrics {
   pendingReviewCampaignsCount: number;
   perfectPartnersCount: number;
   partnerOfferRedemptionsCount: number;
+  autopayEnrolledTenants: number;
+  autopayRatePercent: number;
+  connectedPayoutLandlords: number;
+}
+
+// A tenant's current rental for Perfect Pay purposes — the property behind
+// their most recently approved application. There's no separate "lease"
+// object yet (see the domain.ts note on that), so this is the same
+// approved-application lookup Rewards.tsx already does, centralized so
+// every Perfect Pay screen agrees on what "my current rental" means.
+export interface CurrentRental {
+  application: import("@/types/domain").Application;
+  property: import("@/types/domain").PropertyWithPhotos;
 }
 
 // Impressions/clicks are anonymous counters (see 0006_perfect_partners.sql)

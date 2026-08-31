@@ -16,6 +16,7 @@ import type {
   IncomeVerification,
   JurisdictionRule,
   Landlord,
+  LandlordPayoutAccount,
   LandlordReview,
   Message,
   Notification,
@@ -26,6 +27,7 @@ import type {
   PaymentVerification,
   PerfectPartner,
   PerfectPayMilestone,
+  PlatformFeeConfig,
   Property,
   PropertyPhoto,
   RentIncentive,
@@ -89,11 +91,13 @@ interface Db {
   adClicks: AdClick[];
   adRevenueEvents: AdRevenueEvent[];
   adFrequencyRules: AdFrequencyRules;
+  landlordPayoutAccounts: LandlordPayoutAccount[];
+  platformFeeConfig: PlatformFeeConfig;
   passwords: Record<string, string>;
   currentUserId: string | null;
 }
 
-const STORAGE_KEY = "tpt.devstore.v4";
+const STORAGE_KEY = "tpt.devstore.v5";
 
 function freshDb(): Db {
   return {
@@ -140,6 +144,8 @@ function freshDb(): Db {
     adClicks: [],
     adRevenueEvents: [...seed.seedAdRevenueEvents],
     adFrequencyRules: { ...seed.seedAdFrequencyRules },
+    landlordPayoutAccounts: [...seed.seedLandlordPayoutAccounts],
+    platformFeeConfig: { ...seed.seedPlatformFeeConfig },
     passwords: { ...seed.seedPasswords },
     currentUserId: null,
   };

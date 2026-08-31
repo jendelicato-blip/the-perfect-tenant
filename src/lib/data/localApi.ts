@@ -19,6 +19,7 @@ import type {
   IncentiveType,
   InvitationStatus,
   JurisdictionRule,
+  LandlordPayoutAccount,
   LandlordReview,
   Message,
   Notification,
@@ -26,11 +27,14 @@ import type {
   PartnerOffer,
   PassportShare,
   PassportView,
+  PaymentMethodType,
   PaymentStatus,
   PaymentVerification,
+  PayoutSchedule,
   PerfectPartner,
   PerfectPayLevel,
   PerfectPayMilestone,
+  PlatformFeeConfig,
   Property,
   PropertyWithPhotos,
   RentIncentive,
@@ -55,6 +59,7 @@ import {
   type AdvertisingRevenue,
   type AuthUser,
   type CampaignMetrics,
+  type CurrentRental,
   type MarketplaceTenant,
   type NewLandlordReview,
   type NewProperty,
@@ -85,7 +90,18 @@ export async function signUp(email: string, password: string, role: Role): Promi
     db.passwords[email] = password;
 
     if (role === "tenant") {
-      db.tenants.push({ user_id: id, intro_text: null, photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace", auto_payment_enrolled: false });
+      db.tenants.push({
+        user_id: id,
+        intro_text: null,
+        photo_url: null,
+        household_size: 1,
+        lease_pref_months: 12,
+        passport_visibility: "marketplace",
+        auto_payment_enrolled: false,
+        payment_method_type: null,
+        payment_method_last4: null,
+        autopay_day: null,
+      });
       db.tenantPreferences.push({
         tenant_id: id, min_rent: 0, max_rent: 3000, beds: 1, baths: 1, property_types: ["apartment"],
         move_in_date: new Date().toISOString().slice(0, 10), pets: false, parking_required: false, desired_amenities: [],
@@ -656,7 +672,7 @@ export async function listRentIncentives(propertyId: string): Promise<RentIncent
 export async function upsertRentIncentive(
   propertyId: string,
   type: IncentiveType,
-  patch: Partial<Pick<RentIncentive, "discount_cents" | "enabled" | "requires_lease_months">>,
+  patch: Partial<Pick<RentIncentive, "discount_cents" | "enabled" | "requires_lease_months" | "funded_by">>,
 ): Promise<RentIncentive> {
   return mutate((db) => {
     const existing = db.rentIncentives.find((i) => i.property_id === propertyId && i.type === type);
@@ -672,6 +688,7 @@ export async function upsertRentIncentive(
       discount_cents: patch.discount_cents ?? 0,
       enabled: patch.enabled ?? true,
       requires_lease_months: patch.requires_lease_months ?? null,
+      funded_by: patch.funded_by ?? "landlord",
       created_at: now,
       updated_at: now,
     };
@@ -765,6 +782,90 @@ export async function listPaymentVerificationsForLandlord(landlordId: string): P
 export async function listPerfectPayMilestones(): Promise<PerfectPayMilestone[]> {
   const db = getDb();
   return db.perfectPayMilestones;
+}
+
+// The property behind a tenant's most recently approved application — see
+// CurrentRental in ./types for why this (and not a real lease record) is
+// what "my current rental" means in this phase.
+export async function getCurrentRentalForTenant(tenantId: string): Promise<CurrentRental | null> {
+  const db = getDb();
+  const approved = db.applications
+    .filter((a) => a.tenant_id === tenantId && a.status === "approved")
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
+  if (!approved) return null;
+  const property = await getProperty(approved.property_id);
+  if (!property) return null;
+  return { application: approved, property };
+}
+
+// ---------- Perfect Pay™ Autopay (simulated payment provider) ----------
+//
+// setTenantPaymentSetup is the only place a "payment method" gets created in
+// this phase — it simulates what a real provider's tokenization would hand
+// back (a type + last 4) rather than collecting or storing anything real.
+// Turning autopay on/off still goes through setAutoPaymentEnrollment, which
+// already existed and already feeds the Perfect Rent™ engine's auto_payment
+// qualification — this only adds the method/day fields around it.
+
+export async function setTenantPaymentSetup(
+  tenantId: string,
+  input: { paymentMethodType: PaymentMethodType; last4: string; autopayDay: number },
+): Promise<void> {
+  mutate((db) => {
+    const t = db.tenants.find((x) => x.user_id === tenantId);
+    if (!t) return;
+    t.payment_method_type = input.paymentMethodType;
+    t.payment_method_last4 = input.last4;
+    t.autopay_day = input.autopayDay;
+  });
+}
+
+export async function getLandlordPayoutAccount(landlordId: string): Promise<LandlordPayoutAccount> {
+  const db = getDb();
+  return (
+    db.landlordPayoutAccounts.find((a) => a.landlord_id === landlordId) ?? {
+      landlord_id: landlordId,
+      connected: false,
+      last4: null,
+      payout_schedule: "monthly",
+      connected_at: null,
+    }
+  );
+}
+
+// Simulated instant "Connect" — a real integration would redirect to the
+// provider's own onboarding flow and only mark `connected` from a webhook
+// once that flow actually completes.
+export async function connectLandlordPayoutAccount(landlordId: string, last4: string): Promise<void> {
+  mutate((db) => {
+    const existing = db.landlordPayoutAccounts.find((a) => a.landlord_id === landlordId);
+    const now = new Date().toISOString();
+    if (existing) {
+      existing.connected = true;
+      existing.last4 = last4;
+      existing.connected_at = now;
+    } else {
+      db.landlordPayoutAccounts.push({ landlord_id: landlordId, connected: true, last4, payout_schedule: "monthly", connected_at: now });
+    }
+  });
+}
+
+export async function updateLandlordPayoutSchedule(landlordId: string, schedule: PayoutSchedule): Promise<void> {
+  mutate((db) => {
+    const existing = db.landlordPayoutAccounts.find((a) => a.landlord_id === landlordId);
+    if (existing) existing.payout_schedule = schedule;
+  });
+}
+
+export async function getPlatformFeeConfig(): Promise<PlatformFeeConfig> {
+  const db = getDb();
+  return db.platformFeeConfig;
+}
+
+export async function updatePlatformFeeConfig(patch: Partial<Omit<PlatformFeeConfig, "updated_at">>): Promise<void> {
+  mutate((db) => {
+    Object.assign(db.platformFeeConfig, patch, { updated_at: new Date().toISOString() });
+  });
 }
 
 export async function updatePerfectPayMilestone(level: PerfectPayLevel, consecutivePaymentsRequired: number): Promise<void> {
@@ -1054,6 +1155,9 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   const totalOnTimePayments = db.paymentVerifications.filter((p) => p.status === "on_time").length;
   const activeCampaignsCount = db.adCampaigns.filter((c) => campaignIsActive(c)).length;
   const pendingReviewCampaignsCount = db.adCampaigns.filter((c) => c.status === "pending_review").length;
+  const autopayEnrolledTenants = db.tenants.filter((t) => t.auto_payment_enrolled).length;
+  const autopayRatePercent = db.tenants.length ? Math.round((autopayEnrolledTenants / db.tenants.length) * 100) : 0;
+  const connectedPayoutLandlords = db.landlordPayoutAccounts.filter((a) => a.connected).length;
 
   return {
     totalTenants: db.tenants.length,
@@ -1074,6 +1178,9 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     pendingReviewCampaignsCount,
     perfectPartnersCount: db.perfectPartners.filter((p) => p.active).length,
     partnerOfferRedemptionsCount: db.offerRedemptions.length,
+    autopayEnrolledTenants,
+    autopayRatePercent,
+    connectedPayoutLandlords,
   };
 }
 
@@ -1090,6 +1197,22 @@ export async function getUserEmail(userId: string): Promise<string | null> {
 export async function getOwnAutoPaymentEnrollment(tenantId: string): Promise<boolean> {
   const db = getDb();
   return db.tenants.find((t) => t.user_id === tenantId)?.auto_payment_enrolled ?? false;
+}
+
+// Same reasoning as getOwnAutoPaymentEnrollment above — payment method/day
+// aren't on the marketplace-safe TenantSummary view, so a tenant's own
+// Perfect Pay page reads them straight off `tenants` instead.
+export async function getOwnPaymentSetup(
+  tenantId: string,
+): Promise<Pick<Tenant, "auto_payment_enrolled" | "payment_method_type" | "payment_method_last4" | "autopay_day">> {
+  const db = getDb();
+  const t = db.tenants.find((x) => x.user_id === tenantId);
+  return {
+    auto_payment_enrolled: t?.auto_payment_enrolled ?? false,
+    payment_method_type: t?.payment_method_type ?? null,
+    payment_method_last4: t?.payment_method_last4 ?? null,
+    autopay_day: t?.autopay_day ?? null,
+  };
 }
 
 // ---------- Billing ----------

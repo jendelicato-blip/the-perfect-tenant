@@ -3,8 +3,8 @@ import * as api from "@/lib/data/api";
 import type { AdminMetrics } from "@/lib/data/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Field";
-import type { PerfectPayMilestone, SubscriptionPlan } from "@/types/domain";
+import { Input, Select } from "@/components/ui/Field";
+import type { PerfectPayMilestone, PlatformFeeConfig, SubscriptionPlan } from "@/types/domain";
 import { PerfectPartnersAdminSection } from "@/pages/admin/PerfectPartnersAdmin";
 
 function StatTile({ label, value }: { label: string; value: string | number }) {
@@ -20,14 +20,22 @@ export function AdminDashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
+  const [feeConfig, setFeeConfig] = useState<PlatformFeeConfig | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [savingMilestone, setSavingMilestone] = useState<string | null>(null);
+  const [savingFee, setSavingFee] = useState(false);
 
   async function load() {
-    const [m, p, ms] = await Promise.all([api.getAdminMetrics(), api.listSubscriptionPlans(), api.listPerfectPayMilestones()]);
+    const [m, p, ms, fee] = await Promise.all([
+      api.getAdminMetrics(),
+      api.listSubscriptionPlans(),
+      api.listPerfectPayMilestones(),
+      api.getPlatformFeeConfig(),
+    ]);
     setMetrics(m);
     setPlans([...p].sort((a, b) => a.price_cents - b.price_cents));
     setMilestones([...ms].sort((a, b) => a.sort_order - b.sort_order));
+    setFeeConfig(fee);
   }
 
   useEffect(() => {
@@ -51,6 +59,16 @@ export function AdminDashboard() {
       await load();
     } finally {
       setSavingMilestone(null);
+    }
+  }
+
+  async function saveFeeConfig(patch: Partial<Omit<PlatformFeeConfig, "updated_at">>) {
+    setSavingFee(true);
+    try {
+      await api.updatePlatformFeeConfig(patch);
+      await load();
+    } finally {
+      setSavingFee(false);
     }
   }
 
@@ -87,7 +105,60 @@ export function AdminDashboard() {
         <StatTile label="Tenants with verified payments" value={metrics.verifiedPaymentTenants} />
         <StatTile label="Total on-time payments" value={metrics.totalOnTimePayments} />
         <StatTile label="Reward events issued" value={metrics.rewardEventsCount} />
+        <StatTile label="Autopay-enrolled tenants" value={metrics.autopayEnrolledTenants} />
+        <StatTile label="Autopay rate" value={`${metrics.autopayRatePercent}%`} />
+        <StatTile label="Landlords with payouts connected" value={metrics.connectedPayoutLandlords} />
       </div>
+
+      {feeConfig && (
+        <>
+          <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect Pay™ platform fees</h2>
+          <p className="text-sm text-slate-600">Never hard-coded in the client — configured here and disclosed to landlords.</p>
+          <Card className="mt-4 flex flex-wrap items-center gap-4 p-4">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              Percent fee
+              <Input
+                type="number"
+                min={0}
+                step={0.1}
+                value={feeConfig.percent_fee}
+                onChange={(e) => setFeeConfig({ ...feeConfig, percent_fee: Number(e.target.value) })}
+                className="w-20"
+              />
+              %
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              Flat fee ($)
+              <Input
+                type="number"
+                min={0}
+                step={0.01}
+                value={feeConfig.flat_fee_cents / 100}
+                onChange={(e) => setFeeConfig({ ...feeConfig, flat_fee_cents: Math.round(Number(e.target.value) * 100) })}
+                className="w-24"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              Paid by
+              <Select
+                value={feeConfig.fee_payer}
+                onChange={(e) => setFeeConfig({ ...feeConfig, fee_payer: e.target.value as PlatformFeeConfig["fee_payer"] })}
+                className="w-32"
+              >
+                <option value="landlord">Landlord</option>
+                <option value="tenant">Tenant</option>
+              </Select>
+            </label>
+            <Button
+              variant="secondary"
+              disabled={savingFee}
+              onClick={() => saveFeeConfig({ percent_fee: feeConfig.percent_fee, flat_fee_cents: feeConfig.flat_fee_cents, fee_payer: feeConfig.fee_payer })}
+            >
+              {savingFee ? "Saving…" : "Save"}
+            </Button>
+          </Card>
+        </>
+      )}
 
       <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect Pay™ milestones</h2>
       <p className="text-sm text-slate-600">Consecutive on-time payments required for each level — never hard-coded in the client.</p>

@@ -5,7 +5,21 @@ import * as api from "@/lib/data/api";
 import { Badge, RentalReadyBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { computeRentalReady, REQUIRED_VERIFICATIONS, type PassportShare, type PassportView, type TenantSummary } from "@/types/domain";
+import {
+  computeOnTimeStreak,
+  computePerfectPayLevel,
+  computeRentalReady,
+  REQUIRED_VERIFICATIONS,
+  type Application,
+  type PassportShare,
+  type PassportView,
+  type PaymentVerification,
+  type PerfectPayLevel,
+  type PerfectPayMilestone,
+  type TenantSummary,
+} from "@/types/domain";
+
+const LEVEL_EMOJI: Record<PerfectPayLevel, string> = { new: "⚪", bronze: "🥉", silver: "🥈", gold: "🥇", platinum: "💎" };
 
 function ShareRow({ share, onRevoke }: { share: PassportShare; onRevoke: () => void }) {
   const revoked = Boolean(share.revoked_at);
@@ -43,17 +57,26 @@ export function TenantPassport() {
   const [shares, setShares] = useState<PassportShare[]>([]);
   const [views, setViews] = useState<PassportView[]>([]);
   const [creatingShare, setCreatingShare] = useState(false);
+  const [payments, setPayments] = useState<PaymentVerification[]>([]);
+  const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
 
   async function load() {
     if (!user) return;
-    const [s, sh, v] = await Promise.all([
+    const [s, sh, v, pay, ms, apps] = await Promise.all([
       api.getTenantSummary(user.id),
       api.listPassportShares(user.id),
       api.listPassportViews(user.id),
+      api.listPaymentVerificationsForTenant(user.id),
+      api.listPerfectPayMilestones(),
+      api.listApplicationsForTenant(user.id),
     ]);
     setSummary(s);
     setShares(sh);
     setViews(v);
+    setPayments(pay);
+    setMilestones(ms);
+    setApplications(apps);
 
     if (s && computeRentalReady(s.verification).level === "rental_ready") {
       await api.notifyOnce(
@@ -89,6 +112,9 @@ export function TenantPassport() {
 
   const rentalReady = computeRentalReady(summary.verification);
   const verifiedCategories = REQUIRED_VERIFICATIONS.filter((r) => summary.verification[r.key] === "verified");
+  const streak = computeOnTimeStreak(payments);
+  const { level } = milestones.length ? computePerfectPayLevel(streak, milestones) : { level: "new" as PerfectPayLevel };
+  const verifiedLeaseCount = new Set(applications.filter((a) => a.status === "approved").map((a) => a.property_id)).size;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -133,6 +159,30 @@ export function TenantPassport() {
             );
           })}
         </ul>
+      </Card>
+
+      <Card className="mt-4 p-6">
+        <h2 className="font-semibold text-slate-900">My Rental Reputation</h2>
+        <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-400">Perfect Pay™</p>
+            <p className="mt-1 text-sm font-semibold text-ink-900">
+              {LEVEL_EMOJI[level]} {level[0].toUpperCase() + level.slice(1)}
+            </p>
+            <p className="text-xs text-slate-500">{streak} verified on-time payments</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-400">Verified Leases</p>
+            <p className="mt-1 text-sm font-semibold text-ink-900">{verifiedLeaseCount}</p>
+          </div>
+          <div className="col-span-2 sm:col-span-2">
+            <p className="text-xs uppercase tracking-wide text-slate-400">Rental Ready</p>
+            <div className="mt-1"><RentalReadyBadge level={rentalReady.level} /></div>
+          </div>
+        </div>
+        <Link to="/perfect-pay" className="mt-3 inline-block text-xs font-medium text-brand-700 hover:underline">
+          View Perfect Pay™ →
+        </Link>
       </Card>
 
       <Card className="mt-4 p-6">

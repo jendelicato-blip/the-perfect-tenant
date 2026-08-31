@@ -17,6 +17,8 @@ export interface User {
 
 export type PassportVisibility = "marketplace" | "applied_or_saved_only" | "private";
 
+export type PaymentMethodType = "bank" | "card";
+
 export interface Tenant {
   user_id: string;
   intro_text: string | null;
@@ -25,6 +27,11 @@ export interface Tenant {
   lease_pref_months: number | null;
   passport_visibility: PassportVisibility;
   auto_payment_enrolled: boolean;
+  // Tokenized/simulated in this phase — see PerfectPaySetup. Only ever a
+  // type + last 4 digits are stored, never a real account/card number.
+  payment_method_type: PaymentMethodType | null;
+  payment_method_last4: string | null;
+  autopay_day: number | null;
 }
 
 export type PropertyType = "apartment" | "house" | "condo" | "townhouse" | "studio";
@@ -455,6 +462,12 @@ export const INCENTIVE_LABELS: Record<IncentiveType, string> = {
   upfront_rent: "Qualifying upfront-rent arrangement",
 };
 
+// Who actually funds an enabled incentive's discount. "landlord" reduces the
+// landlord's payout by the discount; "platform" pays the tenant's discount
+// out of Perfect10ant's own revenue and the landlord is paid the full rent.
+// Always explicit — never left to be inferred at payout time.
+export type IncentiveFundingSource = "landlord" | "platform";
+
 export interface RentIncentive {
   id: string;
   property_id: string;
@@ -462,6 +475,7 @@ export interface RentIncentive {
   discount_cents: number;
   enabled: boolean;
   requires_lease_months: number | null;
+  funded_by: IncentiveFundingSource;
   created_at: string;
   updated_at: string;
 }
@@ -531,6 +545,51 @@ export function computePerfectPayLevel(streak: number, milestones: PerfectPayMil
   }
   const next = sorted.find((m) => m.sort_order > current.sort_order) ?? null;
   return { level: current.level, streak, next };
+}
+
+// ---------- Perfect Pay™ Autopay (simulated payment provider) ----------
+//
+// Deliberately NOT built here: a real payment processor integration. No
+// bank/card number, CVV, or banking credential is ever collected or stored
+// — payment_method_type/last4 below are a stand-in for what a real
+// provider's tokenization would return, and a landlord's payout account is
+// a connected/disconnected flag plus a display-only last4, never a real
+// account number. See PerfectPaySetup and PerfectPaySettings for where this
+// is used. Actual rent payments still only ever become "verified" via
+// PaymentVerification, i.e. a landlord affirmatively confirming receipt —
+// nothing here marks a payment successful on its own.
+
+export type PayoutSchedule = "daily" | "weekly" | "monthly";
+
+export interface LandlordPayoutAccount {
+  landlord_id: string;
+  connected: boolean;
+  last4: string | null;
+  payout_schedule: PayoutSchedule;
+  connected_at: string | null;
+}
+
+// Singleton config row, same pattern as AdFrequencyRules below — an actual
+// admin-editable ceiling on what Perfect10ant charges, not a hard-coded
+// number buried in the client.
+export interface PlatformFeeConfig {
+  percent_fee: number;
+  flat_fee_cents: number;
+  fee_payer: "landlord" | "tenant";
+  updated_at: string;
+}
+
+// Picks the next occurrence of `day` (1-28, to stay valid in every month)
+// on or after `from`, formatted as an ISO date. Pure/deterministic so it's
+// safe to call at render time rather than needing a stored "next payment"
+// row for what is, in this phase, just a projection.
+export function computeNextAutopayDate(day: number, from: Date = new Date()): string {
+  const clampedDay = Math.min(Math.max(day, 1), 28);
+  const candidate = new Date(from.getFullYear(), from.getMonth(), clampedDay);
+  if (candidate < new Date(from.getFullYear(), from.getMonth(), from.getDate())) {
+    candidate.setMonth(candidate.getMonth() + 1);
+  }
+  return candidate.toISOString().slice(0, 10);
 }
 
 // ---------- Perfect Partners™ (advertising & monetization) ----------

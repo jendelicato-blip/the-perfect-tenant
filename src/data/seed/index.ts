@@ -14,6 +14,7 @@ import type {
   IncomeVerification,
   JurisdictionRule,
   Landlord,
+  LandlordPayoutAccount,
   LandlordReview,
   Message,
   PartnerOffer,
@@ -22,6 +23,7 @@ import type {
   PaymentVerification,
   PerfectPartner,
   PerfectPayMilestone,
+  PlatformFeeConfig,
   Property,
   PropertyPhoto,
   RentIncentive,
@@ -54,8 +56,8 @@ export const seedUsers: User[] = [
 ];
 
 export const seedTenants: Tenant[] = [
-  { user_id: "u-tenant-1", intro_text: "Quiet grad student, works remote, tidy and reliable.", photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace", auto_payment_enrolled: true },
-  { user_id: "u-tenant-2", intro_text: "Small family of three, looking for a long-term home near good schools.", photo_url: null, household_size: 3, lease_pref_months: 24, passport_visibility: "marketplace", auto_payment_enrolled: false },
+  { user_id: "u-tenant-1", intro_text: "Quiet grad student, works remote, tidy and reliable.", photo_url: null, household_size: 1, lease_pref_months: 12, passport_visibility: "marketplace", auto_payment_enrolled: true, payment_method_type: "bank", payment_method_last4: "4821", autopay_day: 1 },
+  { user_id: "u-tenant-2", intro_text: "Small family of three, looking for a long-term home near good schools.", photo_url: null, household_size: 3, lease_pref_months: 24, passport_visibility: "marketplace", auto_payment_enrolled: false, payment_method_type: null, payment_method_last4: null, autopay_day: null },
 ];
 
 export const seedTenantPreferences: TenantPreferences[] = [
@@ -220,11 +222,11 @@ export const seedLandlordReviews: LandlordReview[] = [];
 // ---------- Perfect Rent™ / Perfect Pay™ / Perfect Rewards™ ----------
 
 export const seedRentIncentives: RentIncentive[] = [
-  { id: "ri-1", property_id: "p-1", type: "passport_verified", discount_cents: 2500, enabled: true, requires_lease_months: null, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
-  { id: "ri-2", property_id: "p-1", type: "longer_lease", discount_cents: 2500, enabled: true, requires_lease_months: 18, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
-  { id: "ri-3", property_id: "p-1", type: "auto_payment", discount_cents: 2500, enabled: true, requires_lease_months: null, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
-  { id: "ri-4", property_id: "p-3", type: "rental_history", discount_cents: 2500, enabled: true, requires_lease_months: null, created_at: "2026-08-03T00:00:00Z", updated_at: "2026-08-03T00:00:00Z" },
-  { id: "ri-5", property_id: "p-1", type: "upfront_rent", discount_cents: 5000, enabled: true, requires_lease_months: null, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+  { id: "ri-1", property_id: "p-1", type: "passport_verified", discount_cents: 2500, enabled: true, requires_lease_months: null, funded_by: "landlord", created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+  { id: "ri-2", property_id: "p-1", type: "longer_lease", discount_cents: 2500, enabled: true, requires_lease_months: 18, funded_by: "landlord", created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+  { id: "ri-3", property_id: "p-1", type: "auto_payment", discount_cents: 2500, enabled: true, requires_lease_months: null, funded_by: "platform", created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+  { id: "ri-4", property_id: "p-3", type: "rental_history", discount_cents: 2500, enabled: true, requires_lease_months: null, funded_by: "landlord", created_at: "2026-08-03T00:00:00Z", updated_at: "2026-08-03T00:00:00Z" },
+  { id: "ri-5", property_id: "p-1", type: "upfront_rent", discount_cents: 5000, enabled: true, requires_lease_months: null, funded_by: "landlord", created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
 ];
 
 // Permissive by default — this one row is the only demonstrated restriction,
@@ -318,6 +320,20 @@ export const seedAdFrequencyRules: AdFrequencyRules = {
   max_sponsored_properties_per_page: 1,
   max_partner_cards_per_page: 2,
   ads_enabled: true,
+};
+
+// ---------- Perfect Pay™ Autopay (simulated payment provider) ----------
+
+export const seedLandlordPayoutAccounts: LandlordPayoutAccount[] = [
+  { landlord_id: "u-landlord-1", connected: true, last4: "1234", payout_schedule: "weekly", connected_at: "2026-08-05T00:00:00Z" },
+  { landlord_id: "u-landlord-2", connected: false, last4: null, payout_schedule: "monthly", connected_at: null },
+];
+
+export const seedPlatformFeeConfig: PlatformFeeConfig = {
+  percent_fee: 0,
+  flat_fee_cents: 0,
+  fee_payer: "landlord",
+  updated_at: "2026-08-01T00:00:00Z",
 };
 
 // Dev-mode only: plaintext passwords for the seeded demo accounts.

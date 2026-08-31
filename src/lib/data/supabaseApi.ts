@@ -18,6 +18,7 @@ import type {
   IncentiveType,
   InvitationStatus,
   JurisdictionRule,
+  LandlordPayoutAccount,
   LandlordReview,
   Message,
   Notification,
@@ -25,11 +26,14 @@ import type {
   PartnerOffer,
   PassportShare,
   PassportView,
+  PaymentMethodType,
   PaymentStatus,
   PaymentVerification,
+  PayoutSchedule,
   PerfectPartner,
   PerfectPayLevel,
   PerfectPayMilestone,
+  PlatformFeeConfig,
   Property,
   PropertyWithPhotos,
   RentIncentive,
@@ -55,6 +59,7 @@ import {
   type AdvertisingRevenue,
   type AuthUser,
   type CampaignMetrics,
+  type CurrentRental,
   type MarketplaceTenant,
   type NewLandlordReview,
   type NewProperty,
@@ -167,8 +172,13 @@ function summaryFromProfileRow(row: Record<string, unknown>, areas: TenantArea[]
       passport_visibility: (row.passport_visibility as Tenant["passport_visibility"]) ?? "marketplace",
       // Not exposed by tenant_public_profile (Perfect Rent's per-tenant
       // marketplace estimate is Phase 1-deferred — see docs/ARCHITECTURE.md);
-      // a tenant's own pages read this straight off `tenants` instead.
+      // a tenant's own pages read this straight off `tenants` instead. Same
+      // reasoning for the payment method/autopay-day fields below — a
+      // landlord viewing this tenant's Passport never sees them.
       auto_payment_enrolled: false,
+      payment_method_type: null,
+      payment_method_last4: null,
+      autopay_day: null,
     },
     user: { id: row.tenant_id as string, email: row.email as string },
     preferences: {
@@ -788,7 +798,7 @@ export async function listRentIncentives(propertyId: string): Promise<RentIncent
 export async function upsertRentIncentive(
   propertyId: string,
   type: IncentiveType,
-  patch: Partial<Pick<RentIncentive, "discount_cents" | "enabled" | "requires_lease_months">>,
+  patch: Partial<Pick<RentIncentive, "discount_cents" | "enabled" | "requires_lease_months" | "funded_by">>,
 ): Promise<RentIncentive> {
   const db = client();
   const { data: existing } = await db.from("rent_incentives").select("*").eq("property_id", propertyId).eq("type", type).maybeSingle();
@@ -804,7 +814,14 @@ export async function upsertRentIncentive(
   }
   const { data, error } = await db
     .from("rent_incentives")
-    .insert({ property_id: propertyId, type, discount_cents: patch.discount_cents ?? 0, enabled: patch.enabled ?? true, requires_lease_months: patch.requires_lease_months ?? null })
+    .insert({
+      property_id: propertyId,
+      type,
+      discount_cents: patch.discount_cents ?? 0,
+      enabled: patch.enabled ?? true,
+      requires_lease_months: patch.requires_lease_months ?? null,
+      funded_by: patch.funded_by ?? "landlord",
+    })
     .select()
     .single();
   if (error) throw new ApiError(error.message);
@@ -890,6 +907,73 @@ export async function listPerfectPayMilestones(): Promise<PerfectPayMilestone[]>
   const { data, error } = await db.from("perfect_pay_milestones").select("*");
   if (error) throw new ApiError(error.message);
   return (data ?? []) as PerfectPayMilestone[];
+}
+
+export async function getCurrentRentalForTenant(tenantId: string): Promise<CurrentRental | null> {
+  const db = client();
+  const { data: approved } = await db
+    .from("applications")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("status", "approved")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!approved) return null;
+  const property = await getProperty((approved as Application).property_id);
+  if (!property) return null;
+  return { application: approved as Application, property };
+}
+
+// ---------- Perfect Pay™ Autopay (simulated payment provider) ----------
+
+export async function setTenantPaymentSetup(
+  tenantId: string,
+  input: { paymentMethodType: PaymentMethodType; last4: string; autopayDay: number },
+): Promise<void> {
+  const db = client();
+  await db
+    .from("tenants")
+    .update({ payment_method_type: input.paymentMethodType, payment_method_last4: input.last4, autopay_day: input.autopayDay })
+    .eq("user_id", tenantId);
+}
+
+export async function getLandlordPayoutAccount(landlordId: string): Promise<LandlordPayoutAccount> {
+  const db = client();
+  const { data } = await db.from("landlord_payout_accounts").select("*").eq("landlord_id", landlordId).maybeSingle();
+  return (
+    (data as LandlordPayoutAccount | null) ?? {
+      landlord_id: landlordId,
+      connected: false,
+      last4: null,
+      payout_schedule: "monthly",
+      connected_at: null,
+    }
+  );
+}
+
+export async function connectLandlordPayoutAccount(landlordId: string, last4: string): Promise<void> {
+  const db = client();
+  await db
+    .from("landlord_payout_accounts")
+    .upsert({ landlord_id: landlordId, connected: true, last4, connected_at: new Date().toISOString() }, { onConflict: "landlord_id" });
+}
+
+export async function updateLandlordPayoutSchedule(landlordId: string, schedule: PayoutSchedule): Promise<void> {
+  const db = client();
+  await db.from("landlord_payout_accounts").update({ payout_schedule: schedule }).eq("landlord_id", landlordId);
+}
+
+export async function getPlatformFeeConfig(): Promise<PlatformFeeConfig> {
+  const db = client();
+  const { data, error } = await db.from("platform_fee_config").select("*").eq("id", 1).single();
+  if (error) throw new ApiError(error.message);
+  return data as PlatformFeeConfig;
+}
+
+export async function updatePlatformFeeConfig(patch: Partial<Omit<PlatformFeeConfig, "updated_at">>): Promise<void> {
+  const db = client();
+  await db.from("platform_fee_config").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", 1);
 }
 
 export async function updatePerfectPayMilestone(level: PerfectPayLevel, consecutivePaymentsRequired: number): Promise<void> {
@@ -1190,6 +1274,14 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   ).length;
   const pendingReviewCampaignsCount = campaignRows.filter((c) => c.status === "pending_review").length;
 
+  const [autopayTenants, payoutAccounts] = await Promise.all([
+    db.from("tenants").select("auto_payment_enrolled"),
+    db.from("landlord_payout_accounts").select("connected"),
+  ]);
+  const autopayEnrolledTenants = (autopayTenants.data ?? []).filter((t) => t.auto_payment_enrolled).length;
+  const autopayRatePercent = tenants.count ? Math.round((autopayEnrolledTenants / tenants.count) * 100) : 0;
+  const connectedPayoutLandlords = (payoutAccounts.data ?? []).filter((a) => a.connected).length;
+
   return {
     totalTenants: tenants.count ?? 0,
     rentalReadyTenants,
@@ -1209,6 +1301,9 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     pendingReviewCampaignsCount,
     perfectPartnersCount: partnersCount.count ?? 0,
     partnerOfferRedemptionsCount: redemptionsCount.count ?? 0,
+    autopayEnrolledTenants,
+    autopayRatePercent,
+    connectedPayoutLandlords,
   };
 }
 
@@ -1228,6 +1323,23 @@ export async function getOwnAutoPaymentEnrollment(tenantId: string): Promise<boo
   const db = client();
   const { data } = await db.from("tenants").select("auto_payment_enrolled").eq("user_id", tenantId).maybeSingle();
   return data?.auto_payment_enrolled ?? false;
+}
+
+export async function getOwnPaymentSetup(
+  tenantId: string,
+): Promise<Pick<Tenant, "auto_payment_enrolled" | "payment_method_type" | "payment_method_last4" | "autopay_day">> {
+  const db = client();
+  const { data } = await db
+    .from("tenants")
+    .select("auto_payment_enrolled, payment_method_type, payment_method_last4, autopay_day")
+    .eq("user_id", tenantId)
+    .maybeSingle();
+  return {
+    auto_payment_enrolled: data?.auto_payment_enrolled ?? false,
+    payment_method_type: data?.payment_method_type ?? null,
+    payment_method_last4: data?.payment_method_last4 ?? null,
+    autopay_day: data?.autopay_day ?? null,
+  };
 }
 
 // ---------- Billing ----------

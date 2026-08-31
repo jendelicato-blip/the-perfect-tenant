@@ -5,18 +5,41 @@ import * as api from "@/lib/data/api";
 import { RentalReadyBadge, VerificationBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { computeRentalReady, REQUIRED_VERIFICATIONS, type TenantSummary } from "@/types/domain";
+import {
+  computeOnTimeStreak,
+  computePerfectPayLevel,
+  computeRentalReady,
+  REQUIRED_VERIFICATIONS,
+  type PaymentVerification,
+  type PerfectPayLevel,
+  type PerfectPayMilestone,
+  type TenantSummary,
+} from "@/types/domain";
+
+const LEVEL_EMOJI: Record<PerfectPayLevel, string> = { new: "⚪", bronze: "🥉", silver: "🥈", gold: "🥇", platinum: "💎" };
 
 export function LandlordTenantPassportView() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [summary, setSummary] = useState<TenantSummary | null>(null);
+  const [payments, setPayments] = useState<PaymentVerification[]>([]);
+  const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
 
   useEffect(() => {
     if (!tenantId) return;
     api.getTenantSummary(tenantId).then(setSummary);
     if (user) api.recordPassportView(tenantId, user.id);
+    // RLS only lets a landlord read payment_verifications rows where they
+    // are the recording landlord (payment_verifications_landlord_all) — so
+    // this only ever shows Perfect Pay history this landlord themselves
+    // verified for this tenant, never another landlord's. A tenant's full
+    // cross-landlord history following them (see the domain.ts note on
+    // that) needs a real public-safe aggregate view, deferred for now.
+    if (user) {
+      api.listPaymentVerificationsForLandlord(user.id).then((all) => setPayments(all.filter((p) => p.tenant_id === tenantId)));
+    }
+    api.listPerfectPayMilestones().then(setMilestones);
   }, [tenantId, user]);
 
   if (!summary) return <div className="mx-auto max-w-2xl px-4 py-10 text-sm text-slate-500">Loading Passport…</div>;
@@ -43,6 +66,19 @@ export function LandlordTenantPassportView() {
         <p className="text-sm text-slate-600">{summary.tenant.intro_text || "No intro provided."}</p>
         <p className="mt-1 text-xs text-slate-400">Household size: {summary.tenant.household_size}</p>
       </Card>
+
+      {payments.length > 0 && milestones.length > 0 && (
+        <Card className="mt-4 p-6">
+          <h2 className="font-semibold text-slate-900">Perfect Pay™</h2>
+          <p className="mt-2 text-2xl">
+            {LEVEL_EMOJI[computePerfectPayLevel(computeOnTimeStreak(payments), milestones).level]}{" "}
+            {computePerfectPayLevel(computeOnTimeStreak(payments), milestones).level[0].toUpperCase() +
+              computePerfectPayLevel(computeOnTimeStreak(payments), milestones).level.slice(1)}
+          </p>
+          <p className="text-sm text-slate-500">{computeOnTimeStreak(payments)} verified on-time payments</p>
+          <p className="mt-2 text-xs text-slate-400">Payment history verified by Perfect10ant.</p>
+        </Card>
+      )}
 
       <Card className="mt-4 p-6">
         <h2 className="font-semibold text-slate-900">Verification</h2>

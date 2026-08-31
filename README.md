@@ -258,7 +258,21 @@ to the Phase 1 stub automatically. Pricing itself is never hard-coded — it's r
   matches on load; there's no background job re-scoring saved searches and pushing alerts yet.
 - **Real payment processor integration for Perfect Pay™** — landlord confirmation is the only
   verification source; no bank/rent-collection integration exists, per the payment-data rule
-  above.
+  above. Perfect Pay Autopay setup, the Rent Collection dashboard, and payout account "connection"
+  are all real UI/data flows built on top of that same honest boundary — they store a simulated
+  payment-method type + last 4 digits (never a real account/card number) and a simulated
+  connected/disconnected payout flag, exactly the shape a real provider's tokenization/Connect
+  onboarding would hand back, so wiring in an actual provider (Stripe Connect or similar) later is
+  additive, not a rewrite.
+- **Real Stripe Connect / any payment provider webhooks, refunds, disputes, or payouts** —
+  no webhook endpoint, idempotency handling, or payout transfer exists; "Connect payout account"
+  and turning on Autopay are instant client-side state changes, not a real onboarding/webhook flow.
+- **Platform fee deduction** — `platform_fee_config` is a real, admin-editable, landlord-disclosed
+  setting, but nothing actually deducts it from anything, since there's no real payment rail moving
+  money to deduct a fee from yet.
+- **A public-safe, cross-landlord Perfect Pay™ history view** (e.g. a landlord scanning a Passport
+  share link the same way a QR code might) — see the next bullet below for the RLS reasoning; this
+  needs a `tenant_public_profile`-style safe view/RPC, not built yet.
 - **Any security-deposit or prepaid-rent feature** — intentionally not built; needs real legal
   review first (see Compliance notes).
 - **Real jurisdiction/compliance data behind the Perfect Rent™ gate** — `jurisdiction_rules` is a

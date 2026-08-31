@@ -72,6 +72,7 @@ export const {
   getAdminMetrics,
   getUserEmail,
   getOwnAutoPaymentEnrollment,
+  getOwnPaymentSetup,
   startCheckout,
   listRentIncentives,
   upsertRentIncentive,
@@ -106,6 +107,13 @@ export const {
   createPartnerOffer,
   updatePartnerOffer,
   getAdvertisingRevenue,
+  getCurrentRentalForTenant,
+  setTenantPaymentSetup,
+  getLandlordPayoutAccount,
+  connectLandlordPayoutAccount,
+  updateLandlordPayoutSchedule,
+  getPlatformFeeConfig,
+  updatePlatformFeeConfig,
 } = impl;
 
 export type {
@@ -113,6 +121,7 @@ export type {
   AdvertisingRevenue,
   AuthUser,
   CampaignMetrics,
+  CurrentRental,
   MarketplaceTenant,
   NewLandlordReview,
   NewProperty,

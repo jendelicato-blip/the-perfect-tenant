@@ -8,6 +8,7 @@ import { About } from "@/pages/About";
 import { Login } from "@/pages/Login";
 import { Signup } from "@/pages/Signup";
 import { ConversationList, ConversationThread } from "@/pages/Messages";
+import { TenantHome } from "@/pages/tenant/Home";
 import { TenantOnboarding } from "@/pages/tenant/Onboarding";
 import { TenantSearch } from "@/pages/tenant/Search";
 import { TenantMatches } from "@/pages/tenant/Matches";
@@ -18,9 +19,12 @@ import { TenantPassport } from "@/pages/tenant/Passport";
 import { TenantVerificationCenter } from "@/pages/tenant/VerificationCenter";
 import { TenantInvitations } from "@/pages/tenant/Invitations";
 import { TenantPerfectPay } from "@/pages/tenant/PerfectPay";
+import { PerfectPaySetup } from "@/pages/tenant/PerfectPaySetup";
 import { TenantRewards } from "@/pages/tenant/Rewards";
 import { Partners } from "@/pages/tenant/Partners";
 import { LandlordDashboard } from "@/pages/landlord/Dashboard";
+import { LandlordRentCollection } from "@/pages/landlord/RentCollection";
+import { LandlordPerfectPaySettings } from "@/pages/landlord/PerfectPaySettings";
 import { LandlordPropertyForm } from "@/pages/landlord/PropertyForm";
 import { LandlordApplicants } from "@/pages/landlord/Applicants";
 import { LandlordSavedTenants } from "@/pages/landlord/SavedTenants";
@@ -45,6 +49,14 @@ function App() {
         <Route path="/messages" element={<ConversationList />} />
         <Route path="/messages/:conversationId" element={<ConversationThread />} />
 
+        <Route
+          path="/home"
+          element={
+            <RequireRole role="tenant">
+              <TenantHome />
+            </RequireRole>
+          }
+        />
         <Route
           path="/onboarding"
           element={
@@ -118,6 +130,14 @@ function App() {
           }
         />
         <Route
+          path="/perfect-pay/setup"
+          element={
+            <RequireRole role="tenant">
+              <PerfectPaySetup />
+            </RequireRole>
+          }
+        />
+        <Route
           path="/rewards"
           element={
             <RequireRole role="tenant">
@@ -171,6 +191,22 @@ function App() {
           element={
             <RequireRole role="landlord">
               <LandlordSavedTenants />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/landlord/rent-collection"
+          element={
+            <RequireRole role="landlord">
+              <LandlordRentCollection />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/landlord/perfect-pay-settings"
+          element={
+            <RequireRole role="landlord">
+              <LandlordPerfectPaySettings />
             </RequireRole>
           }
         />

@@ -58,7 +58,12 @@ export function LandlordPropertyForm() {
     api.listRentIncentives(id).then((existing) => {
       const next = { ...EMPTY_INCENTIVE_FORM };
       for (const i of existing) {
-        next[i.type] = { enabled: i.enabled, discountDollars: i.discount_cents / 100, requiresLeaseMonths: i.requires_lease_months ?? next[i.type].requiresLeaseMonths };
+        next[i.type] = {
+          enabled: i.enabled,
+          discountDollars: i.discount_cents / 100,
+          requiresLeaseMonths: i.requires_lease_months ?? next[i.type].requiresLeaseMonths,
+          fundedBy: i.funded_by,
+        };
       }
       setIncentives(next);
     });
@@ -134,6 +139,7 @@ export function LandlordPropertyForm() {
               enabled: incentives[type].enabled,
               discount_cents: Math.round(incentives[type].discountDollars * 100),
               requires_lease_months: type === "longer_lease" ? incentives[type].requiresLeaseMonths : null,
+              funded_by: incentives[type].fundedBy,
             }),
           ),
         );
