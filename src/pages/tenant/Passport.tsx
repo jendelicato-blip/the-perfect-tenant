@@ -107,8 +107,11 @@ export function TenantPassport() {
       <Card className="mt-6 p-6">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-slate-900">Verification</h2>
-          <Link to="/verification" className="text-sm font-medium text-brand-600 hover:underline">
-            View Verification Center
+          <Link
+            to="/verification"
+            className="text-sm font-semibold text-brand-700 underline decoration-2 underline-offset-4 hover:text-brand-800"
+          >
+            View Verification Center →
           </Link>
         </div>
         <ul className="mt-3 grid grid-cols-2 gap-2 text-sm">
