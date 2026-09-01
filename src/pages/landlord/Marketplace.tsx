@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
 import type { MarketplaceTenant } from "@/lib/data/api";
 import { Badge, RentalReadyBadge, VerificationBadge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Field";
@@ -58,6 +59,7 @@ export function LandlordMarketplace() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <BackButton fallback="/landlord" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">
         Find Your <InlineLogo className="h-7 w-auto" />
       </h1>

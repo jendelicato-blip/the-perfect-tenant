@@ -31,6 +31,7 @@ export function ConversationList() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
+      <BackButton fallback={user.role === "landlord" ? "/landlord" : "/home"} className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Messages</h1>
       <div className="mt-6 space-y-2">
         {conversations.length === 0 && <p className="text-sm text-slate-500">No conversations yet.</p>}

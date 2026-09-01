@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { Subscription, SubscriptionPlan, SubscriptionTier } from "@/types/domain";
@@ -51,6 +52,7 @@ export function LandlordPricing() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-16 text-center">
+      <BackButton fallback={user?.role === "landlord" ? "/landlord" : "/"} className="mb-4 text-left" />
       <span className="inline-block rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-700">
         Landlord subscription
       </span>

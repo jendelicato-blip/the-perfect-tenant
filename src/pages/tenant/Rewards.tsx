@@ -4,6 +4,7 @@ import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { computePerfectRent } from "@/lib/perfectRent/engine";
 import { buildJurisdictionAllowed } from "@/lib/perfectRent/jurisdiction";
+import { BackButton } from "@/components/ui/BackButton";
 import { Card } from "@/components/ui/Card";
 import {
   computeOnTimeStreak,
@@ -106,6 +107,7 @@ export function TenantRewards() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
+      <BackButton fallback="/home" className="mb-4" />
       <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Perfect Rewards™</p>
       <h1 className="mt-1 font-serif text-2xl font-semibold text-ink-900">
         The better your rental profile, the more benefits you can unlock.

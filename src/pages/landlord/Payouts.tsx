@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { BackButton } from "@/components/ui/BackButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import {
@@ -103,6 +104,7 @@ export function LandlordPayouts() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <BackButton fallback="/landlord" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Payouts &amp; Reconciliation</h1>
       <p className="mt-1 text-sm text-slate-500">
         Reflects rent payments you've confirmed — not a real bank transfer or settlement record (see Perfect Pay™ settings).

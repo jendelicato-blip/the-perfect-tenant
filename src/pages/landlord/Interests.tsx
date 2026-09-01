@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
 import { RentalReadyBadge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Card } from "@/components/ui/Card";
 import { computeRentalReady, type PropertyWithPhotos, type TenantInterest, type TenantSummary } from "@/types/domain";
 
@@ -24,6 +25,7 @@ export function LandlordInterests() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      <BackButton fallback="/landlord" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Tenant Interest</h1>
       <p className="mt-1 text-sm text-slate-600">Verified tenants who told you they're interested in a listing.</p>
 

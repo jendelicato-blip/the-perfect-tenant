@@ -3,6 +3,7 @@ import * as api from "@/lib/data/api";
 import type { ScoredProperty } from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { PropertyCard } from "@/components/tenant/PropertyCard";
+import { BackButton } from "@/components/ui/BackButton";
 import { interleaveSponsoredProperties, type WithSponsorFlag } from "@/lib/perfectPartners/engine";
 
 export function TenantMatches() {
@@ -41,6 +42,7 @@ export function TenantMatches() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <BackButton fallback="/home" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Your matches</h1>
       <p className="mt-1 text-sm text-slate-600">
         Ranked by fit against your saved preferences. Update them anytime from your profile.

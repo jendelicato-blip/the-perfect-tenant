@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { BackButton } from "@/components/ui/BackButton";
 import { Card } from "@/components/ui/Card";
 import { InlineLogo } from "@/components/Logo";
 import { PartnerOfferCard } from "@/components/tenant/PartnerOfferCard";
@@ -33,6 +34,7 @@ export function Partners() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <BackButton fallback="/home" className="mb-4" />
       <h1 className="font-serif text-2xl font-semibold text-ink-900">Perfect Partners™</h1>
       <p className="mt-1 text-sm text-slate-600">Helpful services for your next move.</p>
 

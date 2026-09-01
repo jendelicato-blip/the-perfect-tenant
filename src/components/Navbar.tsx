@@ -108,7 +108,7 @@ export function Navbar() {
       {mobileOpen && (
         <nav className="border-t border-slate-200 px-2 py-2 md:hidden">
           {navItems.map((item) => (
-            <Link key={item.to} to={item.to} className={mobileLinkClass}>
+            <Link key={item.to} to={item.to} onClick={() => setMobileOpen(false)} className={mobileLinkClass}>
               {item.label}
             </Link>
           ))}

@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { computePerfectRent, type AppliedIncentive } from "@/lib/perfectRent/engine";
 import { buildJurisdictionAllowed } from "@/lib/perfectRent/jurisdiction";
 import { Badge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import {
@@ -217,6 +218,7 @@ export function TenantPerfectPay() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
+      <BackButton fallback="/home" className="mb-4" />
       <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Perfect Pay™</p>
       <h1 className="mt-1 font-serif text-2xl font-semibold text-ink-900">Rent. Automatically. Get rewarded.</h1>
       <p className="mt-1 text-sm text-slate-500">

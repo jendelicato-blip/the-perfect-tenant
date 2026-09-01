@@ -4,6 +4,7 @@ import type { PropertyFilter } from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { PropertyCard } from "@/components/tenant/PropertyCard";
 import { PartnerOffersSidebar } from "@/components/tenant/PartnerOffersSidebar";
+import { BackButton } from "@/components/ui/BackButton";
 import { Input } from "@/components/ui/Field";
 import type { PropertyType, PropertyWithPhotos } from "@/types/domain";
 
@@ -223,6 +224,7 @@ export function TenantSearch() {
     <div className="mx-auto max-w-5xl px-4 py-10">
       <div className="flex gap-8">
         <div className="min-w-0 flex-1">
+          <BackButton fallback="/home" className="mb-4" />
           <h1 className="text-2xl font-bold text-slate-900">Search listings</h1>
 
           <form

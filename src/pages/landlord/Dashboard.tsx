@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { Application, PaymentVerification, PropertyWithPhotos } from "@/types/domain";
@@ -44,6 +45,7 @@ export function LandlordDashboard() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <BackButton fallback="/landlord" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Manage Your Rentals</h1>
 
       <div className="mt-4 grid grid-cols-3 gap-3">

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import {
@@ -162,6 +163,7 @@ export function LandlordRentCollection() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <BackButton fallback="/landlord" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Rent Collection</h1>
       <p className="mt-1 text-sm text-slate-500">
         Status reflects only payments you've confirmed for {new Date(`${currentMonth()}-01`).toLocaleDateString(undefined, { year: "numeric", month: "long" })} — confirm a payment from the applicant's page.

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
 import { Badge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { PropertyWithPhotos, TenantInvitation } from "@/types/domain";
@@ -32,6 +33,7 @@ export function TenantInvitations() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      <BackButton fallback="/home" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Landlord Interest</h1>
       <p className="mt-1 text-sm text-slate-600">Landlords who invited you to apply based on your Perfect10ant Passport.</p>
 

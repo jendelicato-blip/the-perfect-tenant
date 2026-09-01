@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Card } from "@/components/ui/Card";
 import { LandlordReviewForm } from "@/components/tenant/LandlordReviewForm";
 import type { Application, LandlordReview, PropertyWithPhotos } from "@/types/domain";
@@ -42,6 +43,7 @@ export function TenantApplications() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      <BackButton fallback="/home" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Your applications</h1>
 
       <div className="mt-6 space-y-3">
