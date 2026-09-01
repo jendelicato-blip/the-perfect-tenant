@@ -112,7 +112,7 @@ export function Navbar() {
               {item.label}
             </Link>
           ))}
-          <button onClick={handleSignOut} className={`${mobileLinkClass} w-full text-left`}>
+          <button onClick={handleSignOut} className="block w-full rounded-md px-3 py-2.5 text-left text-sm font-bold text-red-600 transition hover:bg-red-50">
             Sign out
           </button>
         </nav>

@@ -25,6 +25,17 @@ import {
 
 const LEVEL_EMOJI: Record<PerfectPayLevel, string> = { new: "⚪", bronze: "🥉", silver: "🥈", gold: "🥇", platinum: "💎" };
 
+const VERIFICATION_ICON: Record<string, string> = {
+  identity: "🪪",
+  income: "💵",
+  employment: "💼",
+  rentalHistory: "🏠",
+  credit: "📊",
+  background: "🛡️",
+  eviction: "⚖️",
+  references: "👥",
+};
+
 // Same derivation used in AccountMenu.tsx/Home.tsx — there's no separate
 // "name" field anywhere in the schema (see AccountMenu's note), only email.
 function displayNameFromEmail(email: string): string {
@@ -42,10 +53,10 @@ function ShareRow({ share, onRevoke }: { share: PassportShare; onRevoke: () => v
   const inactive = revoked || expired;
   const link = `${window.location.origin}/passport/shared/${share.share_token}`;
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 text-sm sm:flex-row sm:items-start">
+    <div className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 text-sm sm:flex-row-reverse sm:items-start">
       {!inactive && (
         <div className="flex-none rounded-md border border-slate-200 bg-white p-2">
-          <QRCodeSVG value={link} size={88} level="M" />
+          <QRCodeSVG value={link} size={112} level="M" />
         </div>
       )}
       <div className="min-w-0 flex-1">
@@ -170,46 +181,54 @@ export function TenantPassport() {
           stylesheet (see index.css), so "Print Passport" produces just this,
           not the whole page. */}
       <div id="passport-card" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <Logo className="h-8 w-auto" />
+        <div className="flex items-center justify-between bg-ink-900 px-6 py-3">
+          <div className="rounded-lg bg-white px-2 py-1">
+            <Logo className="h-7 w-auto" />
+          </div>
           <RentalReadyBadge level={rentalReady.level} />
         </div>
 
         <div className="px-6 py-6">
-          <div className="flex items-center gap-4">
+          <h1 className="font-serif text-2xl font-bold text-ink-900">
+            Perfect10ant Passport<span className="align-top text-base">™</span>
+          </h1>
+          <p className="text-sm text-slate-500">Your Verified Rental Identity</p>
+
+          <div className="mt-5 flex items-center gap-4 border-t border-slate-100 pt-5">
             <div className="flex h-16 w-16 flex-none items-center justify-center rounded-full bg-brand-600 text-2xl font-bold text-white">
               {initial}
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Perfect10ant Passport™</p>
-              <h1 className="text-xl font-bold text-slate-900">{name}</h1>
+              <h2 className="text-lg font-bold text-slate-900">{name}</h2>
               <p className="text-sm text-slate-500">{summary.user.email}</p>
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-5 sm:grid-cols-4">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400">Perfect Pay™</p>
-              <p className="mt-1 text-sm font-semibold text-ink-900">
-                {LEVEL_EMOJI[level]} {level[0].toUpperCase() + level.slice(1)}
-              </p>
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border border-slate-100 px-3 py-3 text-center">
+              <p className="text-lg" aria-hidden="true">{LEVEL_EMOJI[level]}</p>
+              <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Perfect Pay™</p>
+              <p className="text-sm font-semibold text-ink-900">{level[0].toUpperCase() + level.slice(1)}</p>
               <p className="text-xs text-slate-500">{streak} on-time streak</p>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400">On-Time Rate</p>
-              <p className="mt-1 text-sm font-semibold text-ink-900">{onTimeRate !== null ? `${onTimeRate}%` : "—"}</p>
+            <div className="rounded-xl border border-slate-100 px-3 py-3 text-center">
+              <p className="text-lg" aria-hidden="true">📅</p>
+              <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">On-Time Rate</p>
+              <p className="text-sm font-semibold text-ink-900">{onTimeRate !== null ? `${onTimeRate}%` : "—"}</p>
               <p className="text-xs text-slate-500">{onTimePaymentCount} confirmed payments</p>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400">Verified Leases</p>
-              <p className="mt-1 text-sm font-semibold text-ink-900">{verifiedLeaseCount}</p>
+            <div className="rounded-xl border border-slate-100 px-3 py-3 text-center">
+              <p className="text-lg" aria-hidden="true">🏠</p>
+              <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Verified Leases</p>
+              <p className="text-sm font-semibold text-ink-900">{verifiedLeaseCount}</p>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400">Perfect10ant Verified™</p>
+            <div className="rounded-xl border border-slate-100 px-3 py-3 text-center">
+              <p className="text-lg" aria-hidden="true">🏅</p>
+              <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Perfect10ant Verified™</p>
               {summary.perfect10antVerified ? (
-                <p className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-gold-700">🏅 Verified</p>
+                <p className="text-sm font-semibold text-gold-700">Verified</p>
               ) : (
-                <Link to="/verified" className="no-print mt-1 inline-block text-sm font-medium text-brand-700 hover:underline">
+                <Link to="/verified" className="no-print text-sm font-medium text-brand-700 hover:underline">
                   Get Verified →
                 </Link>
               )}
@@ -226,11 +245,16 @@ export function TenantPassport() {
                 View Details →
               </Link>
             </div>
-            <ul className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <ul className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
               {REQUIRED_VERIFICATIONS.map((r) => (
                 <li key={r.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2">
-                  <span className="text-slate-700">{r.label.replace(/^./, (c) => c.toUpperCase())}</span>
-                  <VerificationBadge status={summary.verification[r.key]} />
+                  <span className="flex min-w-0 items-center gap-2 text-slate-700">
+                    <span className="flex-none" aria-hidden="true">{VERIFICATION_ICON[r.key] ?? "•"}</span>
+                    <span className="truncate">{r.label.replace(/^./, (c) => c.toUpperCase())}</span>
+                  </span>
+                  <span className="flex-none">
+                    <VerificationBadge status={summary.verification[r.key]} />
+                  </span>
                 </li>
               ))}
             </ul>
@@ -241,6 +265,9 @@ export function TenantPassport() {
             <p className="mt-1 text-sm text-slate-600">
               You control who can see your Passport. A landlord you apply to or message can already see it — a
               share link (with its own scannable QR code) sends it anywhere else, and can be revoked any time.
+            </p>
+            <p className="mt-2 font-mono text-xs text-slate-400">
+              Passport ID {summary.tenant.user_id.replace(/-/g, "").slice(0, 12).toUpperCase()}
             </p>
             <div className="no-print mt-3 flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-slate-600">
