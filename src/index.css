@@ -19,3 +19,27 @@ h3,
 .font-serif {
   font-family: "Lora", ui-serif, Georgia, serif;
 }
+
+/* Printing a Passport (see TenantPassport) prints only the #passport-card
+   element — nav, buttons, and every other page section are hidden so the
+   printed page is just the card itself. Anything interactive-only inside
+   the card (Generate/Copy/Revoke, the expiration picker) is marked
+   .no-print so a printed page never shows a control with nothing to click. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #passport-card,
+  #passport-card * {
+    visibility: visible;
+  }
+  #passport-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
