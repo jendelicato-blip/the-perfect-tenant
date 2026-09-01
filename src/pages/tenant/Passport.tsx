@@ -4,12 +4,24 @@ import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
 import type { PassportViewWithViewer } from "@/lib/data/api";
-import { Badge, RentalReadyBadge, VerificationBadge } from "@/components/ui/Badge";
+import { Badge, VerificationBadge } from "@/components/ui/Badge";
 import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Field";
-import { Logo } from "@/components/Logo";
+import {
+  BriefcaseIcon,
+  CalendarCheckIcon,
+  DollarIcon,
+  GaugeIcon,
+  HouseIcon,
+  IdCardIcon,
+  MedalIcon,
+  PeopleIcon,
+  ScaleIcon,
+  ShieldCheckIcon,
+  ShieldIcon,
+} from "@/components/ui/PassportIcons";
 import {
   computeOnTimeStreak,
   computePerfectPayLevel,
@@ -20,21 +32,48 @@ import {
   type PaymentVerification,
   type PerfectPayLevel,
   type PerfectPayMilestone,
+  type RentalReadyLevel,
   type TenantSummary,
+  type TenantVerificationDetails,
 } from "@/types/domain";
 
 const LEVEL_EMOJI: Record<PerfectPayLevel, string> = { new: "⚪", bronze: "🥉", silver: "🥈", gold: "🥇", platinum: "💎" };
 
-const VERIFICATION_ICON: Record<string, string> = {
-  identity: "🪪",
-  income: "💵",
-  employment: "💼",
-  rentalHistory: "🏠",
-  credit: "📊",
-  background: "🛡️",
-  eviction: "⚖️",
-  references: "👥",
+const VERIFICATION_ICON: Record<string, (props: { className?: string }) => JSX.Element> = {
+  identity: IdCardIcon,
+  income: DollarIcon,
+  employment: BriefcaseIcon,
+  rentalHistory: HouseIcon,
+  credit: GaugeIcon,
+  background: ShieldIcon,
+  eviction: ScaleIcon,
+  references: PeopleIcon,
 };
+
+// The shield graphic mirrors RentalReadyBadge's own 3-level system/colors
+// (see Badge.tsx) — just drawn as a shield instead of a pill, closer to a
+// physical ID card's "verified" seal.
+const SHIELD_TONE: Record<RentalReadyLevel, string> = {
+  rental_ready: "text-emerald-600",
+  almost_ready: "text-amber-500",
+  action_required: "text-red-500",
+};
+const SHIELD_LABEL: Record<RentalReadyLevel, string> = {
+  rental_ready: "Rental Ready",
+  almost_ready: "Almost Ready",
+  action_required: "Action Required",
+};
+
+function RentalReadyShield({ level }: { level: RentalReadyLevel }) {
+  return (
+    <div className="flex flex-none flex-col items-center">
+      <ShieldCheckIcon className={`h-14 w-14 ${SHIELD_TONE[level]}`} />
+      <p className={`mt-1 text-center text-xs font-bold uppercase leading-tight ${SHIELD_TONE[level]}`}>
+        {SHIELD_LABEL[level]}
+      </p>
+    </div>
+  );
+}
 
 // Same derivation used in AccountMenu.tsx/Home.tsx — there's no separate
 // "name" field anywhere in the schema (see AccountMenu's note), only email.
@@ -56,7 +95,12 @@ function ShareRow({ share, onRevoke }: { share: PassportShare; onRevoke: () => v
     <div className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 text-sm sm:flex-row-reverse sm:items-start">
       {!inactive && (
         <div className="flex-none rounded-md border border-slate-200 bg-white p-2">
-          <QRCodeSVG value={link} size={112} level="M" />
+          <QRCodeSVG
+            value={link}
+            size={112}
+            level="H"
+            imageSettings={{ src: "/app-icon-192.png", height: 26, width: 26, excavate: true }}
+          />
         </div>
       )}
       <div className="min-w-0 flex-1">
@@ -100,16 +144,18 @@ export function TenantPassport() {
   const [payments, setPayments] = useState<PaymentVerification[]>([]);
   const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [details, setDetails] = useState<TenantVerificationDetails | null>(null);
 
   async function load() {
     if (!user) return;
-    const [s, sh, v, pay, ms, apps] = await Promise.all([
+    const [s, sh, v, pay, ms, apps, det] = await Promise.all([
       api.getTenantSummary(user.id),
       api.listPassportShares(user.id),
       api.listPassportViewsWithViewers(user.id),
       api.listPaymentVerificationsForTenant(user.id),
       api.listPerfectPayMilestones(),
       api.listApplicationsForTenant(user.id),
+      api.getTenantVerificationDetails(user.id),
     ]);
     setSummary(s);
     setShares(sh);
@@ -117,6 +163,7 @@ export function TenantPassport() {
     setPayments(pay);
     setMilestones(ms);
     setApplications(apps);
+    setDetails(det);
 
     if (s && computeRentalReady(s.verification).level === "rental_ready") {
       await api.notifyOnce(
@@ -162,6 +209,15 @@ export function TenantPassport() {
   const onTimeRate = payments.length > 0 ? Math.round((onTimePaymentCount / payments.length) * 100) : null;
   const name = displayNameFromEmail(summary.user.email);
   const initial = name.charAt(0).toUpperCase();
+  // Real timestamp, not an invented "verified by Perfect10ant" claim — the
+  // most recent verified_at across every category that actually has one.
+  const lastVerifiedAt = details
+    ? [details.identity, details.income, details.employment, details.credit, details.background, details.eviction, ...details.rentalHistory]
+        .map((d) => d.verified_at)
+        .filter((d): d is string => Boolean(d))
+        .sort()
+        .at(-1)
+    : null;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -181,18 +237,17 @@ export function TenantPassport() {
           stylesheet (see index.css), so "Print Passport" produces just this,
           not the whole page. */}
       <div id="passport-card" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between bg-ink-900 px-6 py-3">
-          <div className="rounded-lg bg-white px-2 py-1">
-            <Logo className="h-7 w-auto" />
-          </div>
-          <RentalReadyBadge level={rentalReady.level} />
-        </div>
-
         <div className="px-6 py-6">
-          <h1 className="font-serif text-2xl font-bold text-ink-900">
-            Perfect10ant Passport<span className="align-top text-base">™</span>
-          </h1>
-          <p className="text-sm text-slate-500">Your Verified Rental Identity</p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="font-serif text-2xl font-bold leading-tight text-ink-900 sm:text-3xl">
+                Perfect10ant <span className="text-brand-600">Passport</span>
+                <span className="align-top text-base">™</span>
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">Your Verified Rental Identity</p>
+            </div>
+            <RentalReadyShield level={rentalReady.level} />
+          </div>
 
           <div className="mt-5 flex items-center gap-4 border-t border-slate-100 pt-5">
             <div className="flex h-16 w-16 flex-none items-center justify-center rounded-full bg-brand-600 text-2xl font-bold text-white">
@@ -204,26 +259,28 @@ export function TenantPassport() {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-slate-100 px-3 py-3 text-center">
-              <p className="text-lg" aria-hidden="true">{LEVEL_EMOJI[level]}</p>
+          <div className="mt-5 grid grid-cols-2 gap-y-4 border-t border-slate-100 pt-5 sm:grid-cols-4">
+            <div className="text-center">
+              <MedalIcon className="mx-auto h-7 w-7 text-brand-600" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Perfect Pay™</p>
-              <p className="text-sm font-semibold text-ink-900">{level[0].toUpperCase() + level.slice(1)}</p>
+              <p className="text-sm font-semibold text-ink-900">
+                {LEVEL_EMOJI[level]} {level[0].toUpperCase() + level.slice(1)}
+              </p>
               <p className="text-xs text-slate-500">{streak} on-time streak</p>
             </div>
-            <div className="rounded-xl border border-slate-100 px-3 py-3 text-center">
-              <p className="text-lg" aria-hidden="true">📅</p>
+            <div className="text-center">
+              <CalendarCheckIcon className="mx-auto h-7 w-7 text-brand-600" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">On-Time Rate</p>
               <p className="text-sm font-semibold text-ink-900">{onTimeRate !== null ? `${onTimeRate}%` : "—"}</p>
               <p className="text-xs text-slate-500">{onTimePaymentCount} confirmed payments</p>
             </div>
-            <div className="rounded-xl border border-slate-100 px-3 py-3 text-center">
-              <p className="text-lg" aria-hidden="true">🏠</p>
+            <div className="text-center">
+              <HouseIcon className="mx-auto h-7 w-7 text-brand-600" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Verified Leases</p>
               <p className="text-sm font-semibold text-ink-900">{verifiedLeaseCount}</p>
             </div>
-            <div className="rounded-xl border border-slate-100 px-3 py-3 text-center">
-              <p className="text-lg" aria-hidden="true">🏅</p>
+            <div className="text-center">
+              <ShieldCheckIcon className="mx-auto h-7 w-7 text-gold-600" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Perfect10ant Verified™</p>
               {summary.perfect10antVerified ? (
                 <p className="text-sm font-semibold text-gold-700">Verified</p>
@@ -245,22 +302,25 @@ export function TenantPassport() {
                 View Details →
               </Link>
             </div>
-            <ul className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-              {REQUIRED_VERIFICATIONS.map((r) => (
-                <li key={r.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2">
-                  <span className="flex min-w-0 items-center gap-2 text-slate-700">
-                    <span className="flex-none" aria-hidden="true">{VERIFICATION_ICON[r.key] ?? "•"}</span>
-                    <span className="truncate">{r.label.replace(/^./, (c) => c.toUpperCase())}</span>
-                  </span>
-                  <span className="flex-none">
-                    <VerificationBadge status={summary.verification[r.key]} />
-                  </span>
-                </li>
-              ))}
+            <ul className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+              {REQUIRED_VERIFICATIONS.map((r) => {
+                const CategoryIcon = VERIFICATION_ICON[r.key];
+                return (
+                  <li key={r.key} className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2.5 text-slate-700">
+                      {CategoryIcon && <CategoryIcon className="h-5 w-5 flex-none text-slate-400" />}
+                      <span className="truncate">{r.label.replace(/^./, (c) => c.toUpperCase())}</span>
+                    </span>
+                    <span className="flex-none">
+                      <VerificationBadge status={summary.verification[r.key]} />
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
-          <div className="mt-6 border-t border-slate-100 pt-5">
+          <div className="mt-6 rounded-xl border border-slate-100 p-4 sm:p-5">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Share &amp; Verify</h2>
             <p className="mt-1 text-sm text-slate-600">
               You control who can see your Passport. A landlord you apply to or message can already see it — a
@@ -296,6 +356,15 @@ export function TenantPassport() {
             )}
           </div>
         </div>
+
+        {lastVerifiedAt && (
+          <div className="flex items-center gap-2 border-t border-emerald-100 bg-emerald-50 px-6 py-3">
+            <ShieldCheckIcon className="h-5 w-5 flex-none text-emerald-600" />
+            <p className="text-xs text-emerald-800">
+              Reflects real verification data — last verified {new Date(lastVerifiedAt).toLocaleDateString()}.
+            </p>
+          </div>
+        )}
       </div>
 
       <Card className="no-print mt-4 p-6">
