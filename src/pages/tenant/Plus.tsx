@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Field";
@@ -147,6 +148,7 @@ export function TenantPlus() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
+      <BackButton fallback="/home" className="mb-4" />
       <span className="inline-flex items-center gap-1 rounded-full bg-gold-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gold-700">
         ⭐ Perfect10ant Plus™
       </span>

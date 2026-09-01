@@ -4,6 +4,7 @@ import * as api from "@/lib/data/api";
 import type { LandlordPublicProfile } from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PerfectRentBadge } from "@/components/tenant/PerfectRentBadge";
@@ -66,6 +67,7 @@ export function PropertyDetail() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      <BackButton fallback="/search" className="mb-4" />
       {property.photos[0] && (
         <img src={property.photos[0].url} alt={property.address} className="h-64 w-full rounded-xl object-cover" />
       )}

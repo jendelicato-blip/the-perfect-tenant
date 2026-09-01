@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { Badge, RentalReadyBadge, VerificationBadge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { computeRentalReady, type Application, type ApplicationStatus, type PaymentStatus, type PropertyWithPhotos, type TenantSummary } from "@/types/domain";
@@ -77,6 +78,7 @@ export function LandlordApplicants() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      <BackButton fallback="/landlord" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Applicants{property ? ` — ${property.address}` : ""}</h1>
 
       <div className="mt-6 space-y-4">

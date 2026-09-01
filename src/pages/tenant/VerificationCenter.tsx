@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
 import { RentalReadyBadge, VerificationBadge } from "@/components/ui/Badge";
+import { BackButton } from "@/components/ui/BackButton";
 import { Card } from "@/components/ui/Card";
 import { computeRentalReady, type TenantSummary, type TenantVerificationDetails, type VerificationDetail } from "@/types/domain";
 
@@ -107,6 +108,7 @@ export function TenantVerificationCenter() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
+      <BackButton fallback="/passport" className="mb-4" />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">Verification Center</h1>
         <RentalReadyBadge level={rentalReady.level} />

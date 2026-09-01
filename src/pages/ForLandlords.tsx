@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { InlineLogo } from "@/components/Logo";
@@ -7,6 +8,7 @@ import { RotatingStockPhoto } from "@/components/RotatingStockPhoto";
 export function ForLandlords() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-16">
+      <BackButton fallback="/" className="mb-6" />
       <div className="grid items-center gap-10 lg:grid-cols-2">
         <div className="text-center lg:text-left">
           <h1 className="text-4xl font-bold tracking-tight text-slate-900">Stop Sorting Through Applications.</h1>

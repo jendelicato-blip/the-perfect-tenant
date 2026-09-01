@@ -1,8 +1,10 @@
 import { InlineLogo } from "@/components/Logo";
+import { BackButton } from "@/components/ui/BackButton";
 
 export function About() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-16">
+      <BackButton fallback="/" className="mb-4" />
       <span className="inline-block rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-700">
         About us
       </span>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FormRow, Input, Select } from "@/components/ui/Field";
@@ -103,6 +104,7 @@ export function TenantOnboarding() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
+      <BackButton fallback="/passport" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Tell us what you're looking for</h1>
       <p className="mt-1 text-sm text-slate-600">
         This powers your match score and what landlords see about you.

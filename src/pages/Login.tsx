@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FormRow, Input } from "@/components/ui/Field";
@@ -37,6 +38,7 @@ export function Login() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-16">
+      <BackButton fallback="/" className="mb-4" />
       <Card className="p-6">
         <h1 className="text-xl font-semibold text-slate-900">Log in</h1>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">

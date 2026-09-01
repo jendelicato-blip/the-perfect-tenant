@@ -4,6 +4,7 @@ import * as api from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { computePerfectRent } from "@/lib/perfectRent/engine";
 import { buildJurisdictionAllowed } from "@/lib/perfectRent/jurisdiction";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { computeRentalReady, type PaymentMethodType, type PropertyWithPhotos, type TenantSummary } from "@/types/domain";
@@ -74,6 +75,7 @@ export function PerfectPaySetup() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-10">
+      <BackButton fallback="/perfect-pay" label="Exit setup" className="mb-4" />
       <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Perfect Pay™ setup</p>
       <h1 className="mt-1 font-serif text-2xl font-semibold text-ink-900">Set up automatic rent payments</h1>
       <p className="mt-2 text-sm text-slate-500">Step {step} of 5</p>

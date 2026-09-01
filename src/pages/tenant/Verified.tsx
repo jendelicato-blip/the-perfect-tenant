@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
 import { computePerfectRent } from "@/lib/perfectRent/engine";
 import { buildJurisdictionAllowed } from "@/lib/perfectRent/jurisdiction";
+import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { computeRentalReady, type Application, type TenantSummary, type VerifiedPurchase, type VerifiedTierConfig } from "@/types/domain";
@@ -114,6 +115,7 @@ export function TenantVerified() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
+      <BackButton fallback="/home" className="mb-4" />
       <span className="inline-flex items-center gap-1 rounded-full bg-gold-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gold-700">
         🏅 Perfect10ant Verified™
       </span>
