@@ -85,6 +85,12 @@ export function AccountMenu() {
               <Link to="/passport" className="mt-2 block text-xs font-medium text-brand-700 hover:underline">
                 View My Passport →
               </Link>
+              <Link to="/verified" className="mt-1.5 block text-xs font-medium text-brand-700 hover:underline">
+                Get Perfect10ant Verified™ →
+              </Link>
+              <Link to="/plus" className="mt-1.5 block text-xs font-medium text-brand-700 hover:underline">
+                Perfect10ant Plus™ →
+              </Link>
             </div>
           )}
 

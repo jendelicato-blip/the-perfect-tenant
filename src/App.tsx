@@ -2,7 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { RequireRole } from "@/components/RequireRole";
 import { RequireAdmin } from "@/components/RequireAdmin";
-import { Landing } from "@/pages/Landing";
+import { RootRoute } from "@/components/RootRoute";
 import { ForLandlords } from "@/pages/ForLandlords";
 import { About } from "@/pages/About";
 import { Login } from "@/pages/Login";
@@ -43,7 +43,7 @@ function App() {
     <div className="min-h-full">
       <Navbar />
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<RootRoute />} />
         <Route path="/for-landlords" element={<ForLandlords />} />
         <Route path="/about" element={<About />} />
         <Route path="/login" element={<Login />} />
