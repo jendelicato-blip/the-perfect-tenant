@@ -1,12 +1,17 @@
-// Creates a Stripe Checkout session for either:
-//   (a) a landlord's chosen recurring subscription tier ({ tier }), or
+// Creates a Stripe Checkout session for any of:
+//   (a) a landlord's chosen recurring subscription tier ({ tier }),
 //   (b) a tenant's one-time Perfect10ant Verified™ purchase ({ product:
 //       "verified" }) — a real one-time charge, mode "payment", priced
 //       dynamically from verified_tier_config so admin-set pricing is never
 //       baked into a fixed Stripe Price object (see supabase/migrations/
 //       0011_perfect10ant_verified.sql and the note on VerifiedTierConfig /
 //       VerifiedPurchase in src/types/domain.ts for what this does and
-//       doesn't claim).
+//       doesn't claim), or
+//   (c) a tenant's recurring Perfect10ant Plus™ membership ({ product:
+//       "plus" }) — mode "subscription", same dynamic-price_data approach
+//       as (b) but with a recurring interval, so admin-set pricing (
+//       plus_membership_config) drives the actual charge (see
+//       0013_perfect10ant_plus.sql).
 // Deploy with `verify_jwt = true` (the default) — the caller's Supabase JWT
 // is what identifies which landlord/tenant is checking out; Stripe itself is
 // never trusted with that decision.
@@ -82,6 +87,55 @@ Deno.serve(async (req: Request) => {
       success_url: `${siteUrl}/verified?checkout=success`,
       cancel_url: `${siteUrl}/verified?checkout=cancelled`,
       metadata: { tenant_id: userId, product: "verified" },
+    });
+
+    return new Response(JSON.stringify({ url: session.url }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (body.product === "plus") {
+    const { data: tenant } = await supabase.from("tenants").select("user_id").eq("user_id", userId).single();
+    if (!tenant) {
+      return new Response(JSON.stringify({ error: "Only tenants can subscribe to Perfect10ant Plus." }), { status: 403 });
+    }
+
+    const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: config } = await service.from("plus_membership_config").select("*").eq("id", "default").single();
+    if (!config) {
+      return new Response(JSON.stringify({ error: "Perfect10ant Plus is not configured." }), { status: 500 });
+    }
+
+    const { data: membership } = await service
+      .from("tenant_plus_memberships")
+      .select("stripe_customer_id")
+      .eq("tenant_id", userId)
+      .maybeSingle();
+
+    let customerId = membership?.stripe_customer_id ?? null;
+    if (!customerId) {
+      const customer = await stripe.customers.create({ email: userData.user.email, metadata: { tenant_id: userId } });
+      customerId = customer.id;
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: config.price_cents,
+            recurring: { interval: config.billing_period === "year" ? "year" : "month" },
+            product_data: { name: config.name, description: config.description },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${siteUrl}/plus?checkout=success`,
+      cancel_url: `${siteUrl}/plus?checkout=cancelled`,
+      metadata: { tenant_id: userId, product: "plus" },
+      subscription_data: { metadata: { tenant_id: userId, product: "plus" } },
     });
 
     return new Response(JSON.stringify({ url: session.url }), {

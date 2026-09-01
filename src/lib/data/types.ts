@@ -77,6 +77,8 @@ export interface AdminMetrics {
   connectedPayoutLandlords: number;
   perfect10antVerifiedTenants: number;
   verifiedRevenueCents: number;
+  plusActiveMembersCount: number;
+  plusMrrCents: number;
 }
 
 // Tenant-facing view of a landlord — deliberately narrower than the

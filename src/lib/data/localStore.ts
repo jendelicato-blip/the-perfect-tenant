@@ -46,6 +46,9 @@ import type {
   TenantPreferences,
   TenantReference,
   User,
+  PlusMembershipConfig,
+  TenantDocument,
+  TenantPlusMembership,
   VerifiedPurchase,
   VerifiedTierConfig,
 } from "@/types/domain";
@@ -101,11 +104,14 @@ interface Db {
   paymentRefunds: PaymentRefund[];
   verifiedTierConfig: VerifiedTierConfig;
   verifiedPurchases: VerifiedPurchase[];
+  plusMembershipConfig: PlusMembershipConfig;
+  tenantPlusMemberships: TenantPlusMembership[];
+  tenantDocuments: TenantDocument[];
   passwords: Record<string, string>;
   currentUserId: string | null;
 }
 
-const STORAGE_KEY = "tpt.devstore.v7";
+const STORAGE_KEY = "tpt.devstore.v8";
 
 function freshDb(): Db {
   return {
@@ -158,6 +164,9 @@ function freshDb(): Db {
     paymentRefunds: [],
     verifiedTierConfig: { ...seed.seedVerifiedTierConfig },
     verifiedPurchases: [...seed.seedVerifiedPurchases],
+    plusMembershipConfig: { ...seed.seedPlusMembershipConfig },
+    tenantPlusMemberships: [...seed.seedTenantPlusMemberships],
+    tenantDocuments: [],
     passwords: { ...seed.seedPasswords },
     currentUserId: null,
   };

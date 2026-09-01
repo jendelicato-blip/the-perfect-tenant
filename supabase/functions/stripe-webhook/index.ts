@@ -1,6 +1,7 @@
-// Handles Stripe webhook events for both subscription lifecycle updates AND
-// Perfect10ant Verified™ one-time purchases (see stripe-checkout for how
-// each is created). Deploy with `verify_jwt = false` — Stripe cannot send a
+// Handles Stripe webhook events for landlord subscription lifecycle updates,
+// tenant Perfect10ant Verified™ one-time purchases, and tenant Perfect10ant
+// Plus™ recurring memberships (see stripe-checkout for how each is
+// created). Deploy with `verify_jwt = false` — Stripe cannot send a
 // Supabase JWT; the `Stripe-Signature` header (verified below against
 // STRIPE_WEBHOOK_SECRET) is what authenticates the caller instead. Register
 // this function's URL as a webhook endpoint in the Stripe dashboard
@@ -47,6 +48,22 @@ async function upsertFromSubscription(landlordId: string, subscription: Stripe.S
   await service.from("landlords").update({ subscription_tier: tier }).eq("user_id", landlordId);
 }
 
+async function upsertPlusFromSubscription(tenantId: string, subscription: Stripe.Subscription) {
+  // tenant_plus_memberships only models active/canceled (0013) — simpler
+  // than the landlord subscriptions table's 4 states, since Plus has no
+  // trial/past_due UI to reflect yet.
+  const status = subscription.status === "active" || subscription.status === "trialing" ? "active" : "canceled";
+  await service.from("tenant_plus_memberships").upsert(
+    {
+      tenant_id: tenantId,
+      status,
+      stripe_customer_id: subscription.customer as string,
+      renews_at: new Date(subscription.current_period_end * 1000).toISOString(),
+    },
+    { onConflict: "tenant_id" },
+  );
+}
+
 Deno.serve(async (req: Request) => {
   const signature = req.headers.get("Stripe-Signature");
   const body = await req.text();
@@ -84,6 +101,20 @@ Deno.serve(async (req: Request) => {
         break;
       }
 
+      if (session.metadata?.product === "plus") {
+        const tenantId = session.metadata.tenant_id;
+        if (tenantId && session.subscription) {
+          const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
+          await upsertPlusFromSubscription(tenantId, subscription);
+          await service.from("notifications").insert({
+            user_id: tenantId,
+            type: "plus_membership_activated",
+            body: "You're now a Perfect10ant Plus™ member — your Document Vault is ready.",
+          });
+        }
+        break;
+      }
+
       const landlordId = session.metadata?.landlord_id;
       if (landlordId && session.subscription) {
         const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
@@ -94,6 +125,11 @@ Deno.serve(async (req: Request) => {
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
+      if (subscription.metadata?.product === "plus") {
+        const tenantId = subscription.metadata?.tenant_id;
+        if (tenantId) await upsertPlusFromSubscription(tenantId, subscription);
+        break;
+      }
       const landlordId = subscription.metadata?.landlord_id;
       if (landlordId) {
         await upsertFromSubscription(landlordId, subscription);

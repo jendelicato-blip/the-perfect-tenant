@@ -130,6 +130,16 @@ export const {
   getOwnVerifiedPurchase,
   startVerifiedCheckout,
   purchaseVerifiedDirect,
+  getPlusMembershipConfig,
+  updatePlusMembershipConfig,
+  getOwnPlusMembership,
+  startPlusCheckout,
+  activatePlusDirect,
+  cancelPlusMembership,
+  listTenantDocuments,
+  uploadTenantDocument,
+  deleteTenantDocument,
+  getTenantDocumentUrl,
 } = impl;
 
 export type {

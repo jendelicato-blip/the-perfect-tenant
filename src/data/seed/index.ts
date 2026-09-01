@@ -40,6 +40,8 @@ import type {
   TenantPreferences,
   TenantReference,
   User,
+  PlusMembershipConfig,
+  TenantPlusMembership,
   VerifiedPurchase,
   VerifiedTierConfig,
 } from "@/types/domain";
@@ -351,6 +353,22 @@ export const seedVerifiedTierConfig: VerifiedTierConfig = {
 // state); Devon hasn't (demoing the upsell-still-showing state).
 export const seedVerifiedPurchases: VerifiedPurchase[] = [
   { id: "vp-1", tenant_id: "u-tenant-1", amount_paid_cents: 2999, stripe_session_id: null, purchased_at: "2026-08-10T00:00:00Z" },
+];
+
+// ---------- Perfect10ant Plus™ ----------
+
+export const seedPlusMembershipConfig: PlusMembershipConfig = {
+  price_cents: 999,
+  name: "Perfect10ant Plus",
+  description: "Enhanced Passport, Document Vault, and priority Passport sharing.",
+  billing_period: "month",
+  updated_at: "2026-08-01T00:00:00Z",
+};
+
+// Amara is an active Plus member (demoing the Document Vault); Devon isn't
+// (demoing the upsell state).
+export const seedTenantPlusMemberships: TenantPlusMembership[] = [
+  { tenant_id: "u-tenant-1", status: "active", stripe_customer_id: null, started_at: "2026-08-10T00:00:00Z", renews_at: "2026-09-10T00:00:00Z" },
 ];
 
 // Dev-mode only: plaintext passwords for the seeded demo accounts.

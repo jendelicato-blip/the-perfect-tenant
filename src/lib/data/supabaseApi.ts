@@ -37,6 +37,7 @@ import type {
   PerfectPayLevel,
   PerfectPayMilestone,
   PlatformFeeConfig,
+  PlusMembershipConfig,
   Property,
   PropertyWithPhotos,
   RefundType,
@@ -47,8 +48,11 @@ import type {
   SubscriptionTier,
   Tenant,
   TenantArea,
+  DocumentCategory,
+  TenantDocument,
   TenantInterest,
   TenantInvitation,
+  TenantPlusMembership,
   TenantPreferences,
   TenantSummary,
   TenantVerificationDetails,
@@ -1201,6 +1205,105 @@ export async function purchaseVerifiedDirect(tenantId: string, amountPaidCents: 
   if (error) throw new ApiError(error.message);
 }
 
+// ---------- Perfect10ant Plus™ ----------
+
+export async function getPlusMembershipConfig(): Promise<PlusMembershipConfig> {
+  const db = client();
+  const { data, error } = await db.from("plus_membership_config").select("*").eq("id", "default").single();
+  if (error) throw new ApiError(error.message);
+  return data as PlusMembershipConfig;
+}
+
+export async function updatePlusMembershipConfig(patch: Partial<Omit<PlusMembershipConfig, "updated_at">>): Promise<void> {
+  const db = client();
+  await db.from("plus_membership_config").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", "default");
+}
+
+export async function getOwnPlusMembership(tenantId: string): Promise<TenantPlusMembership | null> {
+  const db = client();
+  const { data } = await db.from("tenant_plus_memberships").select("*").eq("tenant_id", tenantId).maybeSingle();
+  return (data as TenantPlusMembership | null) ?? null;
+}
+
+// Same real-checkout-with-a-null-fallback shape as startVerifiedCheckout —
+// mode "subscription" on the Edge Function side (see stripe-checkout).
+export async function startPlusCheckout(): Promise<string | null> {
+  const db = client();
+  const { data, error } = await db.functions.invoke<{ url?: string; error?: string }>("stripe-checkout", {
+    body: { product: "plus" },
+  });
+  if (error || !data?.url) return null;
+  return data.url;
+}
+
+// Phase-1 testing fallback (no live Stripe project configured) — a real
+// upsert (tenant_plus_memberships_owner_all RLS lets a tenant write their
+// own row), but no money moves, same disclosed pattern as
+// purchaseVerifiedDirect.
+export async function activatePlusDirect(tenantId: string): Promise<void> {
+  const db = client();
+  const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await db
+    .from("tenant_plus_memberships")
+    .upsert({ tenant_id: tenantId, status: "active", renews_at: renewsAt }, { onConflict: "tenant_id" });
+  if (error) throw new ApiError(error.message);
+}
+
+export async function cancelPlusMembership(tenantId: string): Promise<void> {
+  const db = client();
+  await db.from("tenant_plus_memberships").update({ status: "canceled" }).eq("tenant_id", tenantId);
+}
+
+export async function listTenantDocuments(tenantId: string): Promise<TenantDocument[]> {
+  const db = client();
+  const { data, error } = await db
+    .from("tenant_documents")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("uploaded_at", { ascending: false });
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as TenantDocument[];
+}
+
+// A real upload to the private "tenant-documents" Storage bucket
+// (0013_perfect10ant_plus.sql) — path is `{tenantId}/{unique}-{filename}`,
+// matching the storage.foldername(name)[1] = auth.uid() RLS policy on
+// storage.objects. Only after the upload succeeds does the metadata row get
+// written, so a tenant_documents row never outlives (or precedes) the file
+// it describes.
+export async function uploadTenantDocument(tenantId: string, file: File, category: DocumentCategory): Promise<TenantDocument> {
+  const db = client();
+  const storagePath = `${tenantId}/${crypto.randomUUID()}-${file.name}`;
+  const { error: uploadError } = await db.storage.from("tenant-documents").upload(storagePath, file);
+  if (uploadError) throw new ApiError(uploadError.message);
+
+  const { data, error } = await db
+    .from("tenant_documents")
+    .insert({ tenant_id: tenantId, category, file_name: file.name, storage_path: storagePath, size_bytes: file.size })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  return data as TenantDocument;
+}
+
+export async function deleteTenantDocument(documentId: string): Promise<void> {
+  const db = client();
+  const { data: doc } = await db.from("tenant_documents").select("storage_path").eq("id", documentId).maybeSingle();
+  await db.from("tenant_documents").delete().eq("id", documentId);
+  if (doc?.storage_path) {
+    await db.storage.from("tenant-documents").remove([doc.storage_path as string]);
+  }
+}
+
+// The bucket is private (public: false in 0013) — every download goes
+// through a short-lived signed URL, never a public/guessable one.
+export async function getTenantDocumentUrl(storagePath: string): Promise<string | null> {
+  const db = client();
+  const { data, error } = await db.storage.from("tenant-documents").createSignedUrl(storagePath, 60);
+  if (error) return null;
+  return data.signedUrl;
+}
+
 export async function listLandlordTenantAutopayStatus(landlordId: string): Promise<TenantAutopayStatus[]> {
   const db = client();
   const { data, error } = await db.from("landlord_visible_autopay").select("tenant_id, auto_payment_enrolled").eq("landlord_id", landlordId);
@@ -1518,6 +1621,13 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   const perfect10antVerifiedTenants = new Set((verifiedPurchaseRows ?? []).map((p) => p.tenant_id)).size;
   const verifiedRevenueCents = (verifiedPurchaseRows ?? []).reduce((sum, p) => sum + p.amount_paid_cents, 0);
 
+  const [{ data: plusMemberships }, { data: plusConfig }] = await Promise.all([
+    db.from("tenant_plus_memberships").select("status"),
+    db.from("plus_membership_config").select("price_cents").eq("id", "default").single(),
+  ]);
+  const plusActiveMembersCount = (plusMemberships ?? []).filter((m) => m.status === "active").length;
+  const plusMrrCents = plusActiveMembersCount * (plusConfig?.price_cents ?? 0);
+
   return {
     totalTenants: tenants.count ?? 0,
     rentalReadyTenants,
@@ -1542,6 +1652,8 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     connectedPayoutLandlords,
     perfect10antVerifiedTenants,
     verifiedRevenueCents,
+    plusActiveMembersCount,
+    plusMrrCents,
   };
 }
 

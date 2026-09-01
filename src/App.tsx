@@ -18,6 +18,7 @@ import { TenantSaved } from "@/pages/tenant/Saved";
 import { TenantPassport } from "@/pages/tenant/Passport";
 import { TenantVerificationCenter } from "@/pages/tenant/VerificationCenter";
 import { TenantVerified } from "@/pages/tenant/Verified";
+import { TenantPlus } from "@/pages/tenant/Plus";
 import { TenantInvitations } from "@/pages/tenant/Invitations";
 import { TenantPerfectPay } from "@/pages/tenant/PerfectPay";
 import { PerfectPaySetup } from "@/pages/tenant/PerfectPaySetup";
@@ -129,6 +130,14 @@ function App() {
           element={
             <RequireRole role="tenant">
               <TenantVerified />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/plus"
+          element={
+            <RequireRole role="tenant">
+              <TenantPlus />
             </RequireRole>
           }
         />

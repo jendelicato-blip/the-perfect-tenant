@@ -26,6 +26,7 @@ export function Navbar() {
       <Link to="/messages" className={navLinkClass}>Messages</Link>
       <Link to="/passport" className={navLinkClass}>My Passport</Link>
       <Link to="/verified" className={navLinkClass}>Get Verified</Link>
+      <Link to="/plus" className={navLinkClass}>Perfect10ant Plus™</Link>
       <Link to="/perfect-pay" className={navLinkClass}>Perfect Pay™</Link>
       <Link to="/rewards" className={navLinkClass}>Rewards</Link>
       <Link to="/partners" className={navLinkClass}>Perfect Partners™</Link>

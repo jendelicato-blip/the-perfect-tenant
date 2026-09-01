@@ -4,7 +4,7 @@ import type { AdminMetrics } from "@/lib/data/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Field";
-import type { PerfectPayMilestone, PlatformFeeConfig, SubscriptionPlan, VerifiedTierConfig, WebhookEvent } from "@/types/domain";
+import type { PerfectPayMilestone, PlatformFeeConfig, PlusMembershipConfig, SubscriptionPlan, VerifiedTierConfig, WebhookEvent } from "@/types/domain";
 import { PerfectPartnersAdminSection } from "@/pages/admin/PerfectPartnersAdmin";
 
 function StatTile({ label, value }: { label: string; value: string | number }) {
@@ -22,20 +22,23 @@ export function AdminDashboard() {
   const [milestones, setMilestones] = useState<PerfectPayMilestone[]>([]);
   const [feeConfig, setFeeConfig] = useState<PlatformFeeConfig | null>(null);
   const [verifiedConfig, setVerifiedConfig] = useState<VerifiedTierConfig | null>(null);
+  const [plusConfig, setPlusConfig] = useState<PlusMembershipConfig | null>(null);
   const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [savingMilestone, setSavingMilestone] = useState<string | null>(null);
   const [savingFee, setSavingFee] = useState(false);
   const [savingVerified, setSavingVerified] = useState(false);
+  const [savingPlus, setSavingPlus] = useState(false);
 
   async function load() {
-    const [m, p, ms, fee, events, verified] = await Promise.all([
+    const [m, p, ms, fee, events, verified, plus] = await Promise.all([
       api.getAdminMetrics(),
       api.listSubscriptionPlans(),
       api.listPerfectPayMilestones(),
       api.getPlatformFeeConfig(),
       api.listRecentWebhookEvents(),
       api.getVerifiedTierConfig(),
+      api.getPlusMembershipConfig(),
     ]);
     setMetrics(m);
     setPlans([...p].sort((a, b) => a.price_cents - b.price_cents));
@@ -43,6 +46,7 @@ export function AdminDashboard() {
     setFeeConfig(fee);
     setWebhookEvents(events);
     setVerifiedConfig(verified);
+    setPlusConfig(plus);
   }
 
   useEffect(() => {
@@ -89,6 +93,16 @@ export function AdminDashboard() {
     }
   }
 
+  async function savePlusConfig(patch: Partial<Omit<PlusMembershipConfig, "updated_at">>) {
+    setSavingPlus(true);
+    try {
+      await api.updatePlusMembershipConfig(patch);
+      await load();
+    } finally {
+      setSavingPlus(false);
+    }
+  }
+
   if (!metrics) return <div className="mx-auto max-w-4xl px-4 py-10 text-sm text-slate-500">Loading…</div>;
 
   return (
@@ -127,6 +141,8 @@ export function AdminDashboard() {
         <StatTile label="Landlords with payouts connected" value={metrics.connectedPayoutLandlords} />
         <StatTile label="Perfect10ant Verified™ tenants" value={metrics.perfect10antVerifiedTenants} />
         <StatTile label="Verified revenue" value={`$${(metrics.verifiedRevenueCents / 100).toLocaleString()}`} />
+        <StatTile label="Perfect10ant Plus™ members" value={metrics.plusActiveMembersCount} />
+        <StatTile label="Plus MRR" value={`$${(metrics.plusMrrCents / 100).toLocaleString()}`} />
       </div>
 
       {feeConfig && (
@@ -212,6 +228,45 @@ export function AdminDashboard() {
               onClick={() => saveVerifiedConfig({ price_cents: verifiedConfig.price_cents, name: verifiedConfig.name, description: verifiedConfig.description })}
             >
               {savingVerified ? "Saving…" : "Save"}
+            </Button>
+          </Card>
+        </>
+      )}
+
+      {plusConfig && (
+        <>
+          <h2 className="mt-8 text-lg font-semibold text-slate-900">Perfect10ant Plus™ pricing</h2>
+          <p className="text-sm text-slate-600">
+            A recurring tenant membership, never hard-coded — Stripe charges exactly this amount per billing period
+            (see supabase/functions/stripe-checkout).
+          </p>
+          <Card className="mt-4 flex flex-wrap items-center gap-4 p-4">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              Price ($)
+              <Input
+                type="number"
+                min={0}
+                step={0.01}
+                value={plusConfig.price_cents / 100}
+                onChange={(e) => setPlusConfig({ ...plusConfig, price_cents: Math.round(Number(e.target.value) * 100) })}
+                className="w-24"
+              />
+              /{plusConfig.billing_period}
+            </label>
+            <label className="flex flex-1 items-center gap-2 text-sm text-slate-600">
+              Name
+              <Input
+                value={plusConfig.name}
+                onChange={(e) => setPlusConfig({ ...plusConfig, name: e.target.value })}
+                className="flex-1"
+              />
+            </label>
+            <Button
+              variant="secondary"
+              disabled={savingPlus}
+              onClick={() => savePlusConfig({ price_cents: plusConfig.price_cents, name: plusConfig.name, description: plusConfig.description })}
+            >
+              {savingPlus ? "Saving…" : "Save"}
             </Button>
           </Card>
         </>

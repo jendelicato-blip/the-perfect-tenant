@@ -174,6 +174,17 @@ Until that key is set, both spots show the same fixed photo they always have —
   in this phase). The Passport, Verification Center, and a landlord's view of that tenant's Passport
   all show the same 🏅 badge once purchased, gated by the same visibility rule as every other
   Passport field.
+- **Perfect10ant Plus™** (`/plus`, `0013_perfect10ant_plus.sql`) — a recurring tenant membership,
+  separate from the one-time Verified™ purchase above (price/name/billing period admin-editable at
+  `/admin`, never hard-coded). Scoped specifically around one genuinely new capability rather than
+  repackaging already-free Passport/Perfect Rent/Perfect Pay features: a real **Document Vault**
+  backed by Supabase Storage (the private `tenant-documents` bucket — the first place this codebase
+  stores an actual file rather than an external URL string). `stripe-checkout` opens a genuine
+  Stripe Checkout session in recurring `subscription` mode, priced from the live admin config via
+  `price_data` (never a fixed Stripe Price object); `stripe-webhook` upserts `tenant_plus_memberships`
+  keyed on `tenant_id`. RLS on `storage.objects` restricts every read/write/delete to the tenant's
+  own folder (`{tenant_id}/{file}`); membership-gating the Vault is a UI check, same as every other
+  paid-tier gate in this app.
 - **Perfect Rewards™** (`/rewards`) — a scorecard combining Rental Ready status, Perfect Pay
   level, verified rental history, and real (never invented) potential savings from Perfect Rent™,
   plus professional (non-gamified) achievement badges and clearly-labeled "Coming Soon" future
@@ -293,8 +304,6 @@ Until that key is set, both spots show the same fixed photo they always have —
   Perfect10ant Verified™ is a real one-time purchase (see above), but purchasing it doesn't
   change this: credit/background/eviction screening still only move to "verified" once a real
   compliant provider is connected.
-- **Perfect10ant Plus™** (a recurring tenant membership, separate from the one-time Verified
-  purchase) — not built this pass; only the one-time tier exists.
 - **Objective applicant filters on `/landlord/applicants`** — `/landlord/tenants` and
   `/landlord/marketplace` both have filter toggles now; the per-property applicant list (which
   includes non-approved applications, where badges like Rental Ready matter most) doesn't yet.

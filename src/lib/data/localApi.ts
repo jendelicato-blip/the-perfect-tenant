@@ -38,6 +38,7 @@ import type {
   PerfectPayLevel,
   PerfectPayMilestone,
   PlatformFeeConfig,
+  PlusMembershipConfig,
   Property,
   PropertyWithPhotos,
   RefundType,
@@ -53,6 +54,9 @@ import type {
   TenantPreferences,
   TenantSummary,
   User,
+  DocumentCategory,
+  TenantDocument,
+  TenantPlusMembership,
   VerifiedPurchase,
   VerifiedTierConfig,
   WebhookEvent,
@@ -1070,6 +1074,90 @@ export async function purchaseVerifiedDirect(tenantId: string, amountPaidCents: 
   });
 }
 
+// ---------- Perfect10ant Plus™ ----------
+
+export async function getPlusMembershipConfig(): Promise<PlusMembershipConfig> {
+  const db = getDb();
+  return db.plusMembershipConfig;
+}
+
+export async function updatePlusMembershipConfig(patch: Partial<Omit<PlusMembershipConfig, "updated_at">>): Promise<void> {
+  mutate((db) => {
+    Object.assign(db.plusMembershipConfig, patch, { updated_at: new Date().toISOString() });
+  });
+}
+
+export async function getOwnPlusMembership(tenantId: string): Promise<TenantPlusMembership | null> {
+  const db = getDb();
+  return db.tenantPlusMemberships.find((m) => m.tenant_id === tenantId) ?? null;
+}
+
+// No live Stripe project in local dev-mode — same null-fallback shape as
+// startVerifiedCheckout/startCheckout above.
+export async function startPlusCheckout(): Promise<string | null> {
+  return null;
+}
+
+// Phase-1 testing fallback — a real row, no money moves, same disclosed
+// pattern as purchaseVerifiedDirect.
+export async function activatePlusDirect(tenantId: string): Promise<void> {
+  mutate((db) => {
+    const existing = db.tenantPlusMemberships.find((m) => m.tenant_id === tenantId);
+    const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    if (existing) {
+      existing.status = "active";
+      existing.renews_at = renewsAt;
+    } else {
+      db.tenantPlusMemberships.push({ tenant_id: tenantId, status: "active", stripe_customer_id: null, started_at: new Date().toISOString(), renews_at: renewsAt });
+    }
+  });
+}
+
+export async function cancelPlusMembership(tenantId: string): Promise<void> {
+  mutate((db) => {
+    const existing = db.tenantPlusMemberships.find((m) => m.tenant_id === tenantId);
+    if (existing) existing.status = "canceled";
+  });
+}
+
+export async function listTenantDocuments(tenantId: string): Promise<TenantDocument[]> {
+  const db = getDb();
+  return db.tenantDocuments.filter((d) => d.tenant_id === tenantId).sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
+}
+
+// Local dev-mode has no real Storage backend to speak of — this records the
+// document's metadata (name/size/category) so the Vault UI is fully
+// clickable, but never the file's actual bytes, and getTenantDocumentUrl
+// below always returns null here. See supabaseApi.ts for the real upload
+// against Supabase Storage.
+export async function uploadTenantDocument(tenantId: string, file: File, category: DocumentCategory): Promise<TenantDocument> {
+  return mutate((db) => {
+    const doc: TenantDocument = {
+      id: newId("doc"),
+      tenant_id: tenantId,
+      category,
+      file_name: file.name,
+      storage_path: `${tenantId}/${newId("file")}-${file.name}`,
+      size_bytes: file.size,
+      uploaded_at: new Date().toISOString(),
+    };
+    db.tenantDocuments.push(doc);
+    return doc;
+  });
+}
+
+export async function deleteTenantDocument(documentId: string): Promise<void> {
+  mutate((db) => {
+    db.tenantDocuments = db.tenantDocuments.filter((d) => d.id !== documentId);
+  });
+}
+
+// No real file behind storage_path in local dev-mode — nothing to sign a
+// URL for.
+export async function getTenantDocumentUrl(): Promise<string | null> {
+  return null;
+}
+
 export async function updatePerfectPayMilestone(level: PerfectPayLevel, consecutivePaymentsRequired: number): Promise<void> {
   mutate((db) => {
     const m = db.perfectPayMilestones.find((x) => x.level === level);
@@ -1362,6 +1450,8 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   const connectedPayoutLandlords = db.landlordPayoutAccounts.filter((a) => a.connected).length;
   const perfect10antVerifiedTenants = new Set(db.verifiedPurchases.map((p) => p.tenant_id)).size;
   const verifiedRevenueCents = db.verifiedPurchases.reduce((sum, p) => sum + p.amount_paid_cents, 0);
+  const plusActiveMembersCount = db.tenantPlusMemberships.filter((m) => m.status === "active").length;
+  const plusMrrCents = plusActiveMembersCount * db.plusMembershipConfig.price_cents;
 
   return {
     totalTenants: db.tenants.length,
@@ -1387,6 +1477,8 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     connectedPayoutLandlords,
     perfect10antVerifiedTenants,
     verifiedRevenueCents,
+    plusActiveMembersCount,
+    plusMrrCents,
   };
 }
 

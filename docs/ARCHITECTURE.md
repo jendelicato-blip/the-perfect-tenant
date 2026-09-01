@@ -380,6 +380,41 @@ gained one more visibility-gated boolean, `perfect10ant_verified`, reusing its e
 clause — the same authorization a landlord's view of any other Passport field already goes through,
 so a landlord only sees the badge when they're already authorized to see the rest of that Passport.
 
+### Perfect10ant Plus™: a recurring membership built around one genuinely new benefit
+
+`/plus` (`Plus.tsx`, `0013_perfect10ant_plus.sql`) is a recurring tenant membership, separate from
+the one-time Verified™ purchase above. The MAJOR PRODUCT UPGRADE spec's own trust mandate ("never
+charge tenants for something already free — TRUST is the advantage") ruled out simply repackaging
+existing free Passport/Perfect Rent/Perfect Pay features behind a paywall, so Plus is scoped
+specifically around a capability that doesn't exist anywhere else in the app: a **Document Vault**
+backed by real Supabase Storage (the `tenant-documents` private bucket) — the first place this
+codebase stores an actual file rather than an external URL string. Every other Plus "benefit"
+(enhanced Passport styling, priority sharing) is presentation on top of data tenants can already see
+for free; the Vault is the one thing a non-member genuinely cannot do.
+
+The membership itself follows the same real-vs-simulated split as every other paid feature here:
+`stripe-checkout`'s `product === "plus"` branch opens a genuine Stripe Checkout session in
+`mode: "subscription"`, priced from `plus_membership_config.price_cents` via `price_data` (not a
+fixed Stripe Price object, so admin-edited pricing is what's actually charged) with a Stripe
+Customer created/reused per tenant. `stripe-webhook` upserts `tenant_plus_memberships` — a singleton
+per tenant (recurring/cancelable state, not a purchase log like `verified_purchases`) — on
+`checkout.session.completed`, `customer.subscription.updated`, and `.deleted`, keyed on `tenant_id`
+so redelivered events don't create duplicates. The Phase 1 fallback (no live Stripe project
+configured) is `activatePlusDirect`/`cancelPlusMembership` — same "Phase 1 testing" pattern as
+`purchaseVerifiedDirect` and `Pricing.tsx`'s subscription checkout.
+
+`tenant_documents` stores only metadata (category, file name, size, `storage_path`); the actual
+bytes live in the `tenant-documents` bucket, `public: false`. Path convention is
+`{tenant_id}/{unique}-{filename}`; RLS on `storage.objects` checks
+`(storage.foldername(name))[1] = auth.uid()::text`, so a tenant can only read/write/delete objects
+under their own folder — the same ownership model as every `*_owner_all` policy elsewhere, just
+expressed against a path instead of a foreign key. Gating "Document Vault requires an active Plus
+membership" is a UI-level check in `Plus.tsx`, identical to how every other paid-tier gate in this
+app works; RLS's job on `tenant_documents`/`storage.objects` is ownership, not membership
+enforcement. Admin metrics (`plusActiveMembersCount`, `plusMrrCents`) read the same real-approximation
+pattern as the existing landlord MRR calc — active count × current `price_cents` — never a fabricated
+number.
+
 ## Perfect Partners™: the advertising/monetization engine
 
 One rule governs everything in this section, enforced structurally rather than by convention:

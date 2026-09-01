@@ -168,6 +168,63 @@ export interface VerifiedPurchase {
   purchased_at: string;
 }
 
+// ---------- Perfect10ant Plus™ (recurring tenant membership) ----------
+//
+// Deliberately built around a genuinely new benefit (a real Document Vault —
+// see TenantDocument below) rather than re-wrapping features the free
+// Passport/Verification Center already provide for free. A recurring
+// membership that only repackaged existing free functionality would violate
+// the platform's own "never make the free tenant appear to be a worse
+// tenant" positioning — Plus adds real capability (persistent, reusable
+// document storage across applications), it doesn't gate anything already
+// free behind a paywall.
+export type PlusMembershipStatus = "active" | "canceled";
+
+export interface PlusMembershipConfig {
+  price_cents: number;
+  name: string;
+  description: string;
+  billing_period: string;
+  updated_at: string;
+}
+
+// Real Stripe Checkout in subscription mode when configured (see
+// stripe-checkout's "plus" branch) — the Phase-1 fallback (activatePlusDirect)
+// is the same disclosed direct-activation pattern as verified_purchases and
+// the landlord subscription flow when no live Stripe project exists.
+export interface TenantPlusMembership {
+  tenant_id: string;
+  status: PlusMembershipStatus;
+  stripe_customer_id: string | null;
+  started_at: string;
+  renews_at: string | null;
+}
+
+export type DocumentCategory = "identity" | "income" | "lease" | "other";
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  identity: "Identity document",
+  income: "Income document",
+  lease: "Lease document",
+  other: "Other",
+};
+
+// The file's actual bytes live in Supabase Storage (bucket
+// "tenant-documents", path `{tenant_id}/{storage-filename}`) — this row is
+// only ever the metadata needed to list/categorize/delete it, never the
+// content itself. A real upload, not a simulated one: local dev-mode (no
+// Storage backend to speak of) keeps this metadata only, without a
+// retrievable file — see the note in localApi.ts.
+export interface TenantDocument {
+  id: string;
+  tenant_id: string;
+  category: DocumentCategory;
+  file_name: string;
+  storage_path: string;
+  size_bytes: number;
+  uploaded_at: string;
+}
+
 export type SubscriptionTier = "starter" | "growth" | "portfolio";
 
 export interface Landlord {
