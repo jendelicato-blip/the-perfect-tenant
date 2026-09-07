@@ -274,7 +274,7 @@ export function TenantPassport() {
             should carry its own header regardless of the app chrome around
             it, so this repeats the real logo + real tagline (see Logo.tsx's
             alt text) rather than relying on the page's own Navbar. */}
-        <div className="flex flex-col items-center gap-1 bg-ink-900 px-6 py-5 text-center">
+        <div className="flex flex-col items-center gap-1 bg-ink-900 px-6 py-5 text-center print:py-2">
           <div className="rounded-lg bg-white px-2.5 py-1.5">
             <Logo className="h-7 w-auto" />
           </div>
@@ -283,10 +283,10 @@ export function TenantPassport() {
           </p>
         </div>
 
-        <div className="px-6 py-6">
+        <div className="px-6 py-6 print:py-3">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="font-serif text-2xl font-bold leading-tight text-ink-900 sm:text-3xl">
+              <h1 className="font-serif text-2xl font-bold leading-tight text-ink-900 sm:text-3xl print:text-xl">
                 Perfect10ant <span className="text-brand-600">Passport</span>
                 <span className="align-top text-base">™</span>
               </h1>
@@ -295,7 +295,7 @@ export function TenantPassport() {
             <RentalReadyShield level={rentalReady.level} />
           </div>
 
-          <div className="mt-5 flex items-center gap-4 border-t border-slate-100 pt-5">
+          <div className="mt-5 flex items-center gap-4 border-t border-slate-100 pt-5 print:mt-3 print:pt-3">
             <div className="flex h-16 w-16 flex-none items-center justify-center rounded-full bg-brand-600 text-2xl font-bold text-white">
               {initial}
             </div>
@@ -306,9 +306,9 @@ export function TenantPassport() {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-y-4 border-t border-slate-100 pt-5 sm:grid-cols-4">
+          <div className="mt-5 grid grid-cols-2 gap-y-4 border-t border-slate-100 pt-5 sm:grid-cols-4 print:mt-3 print:gap-y-2 print:pt-3">
             <div className="text-center">
-              <MedalIcon className="mx-auto h-7 w-7 text-ink-700" />
+              <MedalIcon className="mx-auto h-7 w-7 text-ink-700 print:h-5 print:w-5" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Perfect Pay™</p>
               <p className="text-sm font-bold text-ink-900">
                 {LEVEL_EMOJI[level]} {level[0].toUpperCase() + level.slice(1)}
@@ -316,18 +316,18 @@ export function TenantPassport() {
               <p className="text-xs font-medium text-emerald-700">{streak} on-time streak</p>
             </div>
             <div className="text-center">
-              <CalendarCheckIcon className="mx-auto h-7 w-7 text-ink-700" />
+              <CalendarCheckIcon className="mx-auto h-7 w-7 text-ink-700 print:h-5 print:w-5" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">On-Time Rate</p>
               <p className="text-sm font-bold text-ink-900">{onTimeRate !== null ? `${onTimeRate}%` : "—"}</p>
               <p className="text-xs font-medium text-emerald-700">{onTimePaymentCount} confirmed payments</p>
             </div>
             <div className="text-center">
-              <HouseIcon className="mx-auto h-7 w-7 text-ink-700" />
+              <HouseIcon className="mx-auto h-7 w-7 text-ink-700 print:h-5 print:w-5" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Verified Leases</p>
               <p className="text-sm font-bold text-ink-900">{verifiedLeaseCount}</p>
             </div>
             <div className="text-center">
-              <ShieldCheckIcon className="mx-auto h-7 w-7 text-ink-700" />
+              <ShieldCheckIcon className="mx-auto h-7 w-7 text-ink-700 print:h-5 print:w-5" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Perfect10ant Verified™</p>
               {summary.perfect10antVerified ? (
                 <p className="text-sm font-bold text-gold-700">Verified</p>
@@ -339,7 +339,7 @@ export function TenantPassport() {
             </div>
           </div>
 
-          <div className="mt-6 border-t border-slate-100 pt-5">
+          <div className="mt-6 border-t border-slate-100 pt-5 print:mt-3 print:pt-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Verification Summary</h2>
               <Link
@@ -349,7 +349,7 @@ export function TenantPassport() {
                 View Details →
               </Link>
             </div>
-            <ul className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <ul className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 print:mt-2 print:gap-y-1">
               {REQUIRED_VERIFICATIONS.map((r) => {
                 const CategoryIcon = VERIFICATION_ICON[r.key];
                 return (
@@ -367,9 +367,9 @@ export function TenantPassport() {
             </ul>
           </div>
 
-          <div className="mt-6 rounded-xl border border-slate-100 p-4 sm:p-5">
+          <div id="passport-share-block" className="mt-6 rounded-xl border border-slate-100 p-4 sm:p-5 print:mt-3 print:p-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Share &amp; Verify</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-slate-600 print:hidden">
               You control who can see your Passport. A landlord you apply to or message can already see it — a
               share link (with its own scannable QR code) sends it anywhere else, and can be revoked any time.
             </p>

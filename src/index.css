@@ -25,6 +25,14 @@ h3,
    printed page is just the card itself. Anything interactive-only inside
    the card (Generate/Copy/Revoke, the expiration picker) is marked
    .no-print so a printed page never shows a control with nothing to click. */
+@page {
+  /* Default browser print margins (often 0.5in+ per side) were the
+     difference between the card fitting on one page and spilling a
+     section onto a second — this claws that space back. */
+  size: auto;
+  margin: 8mm;
+}
+
 @media print {
   body * {
     visibility: hidden;
@@ -38,8 +46,16 @@ h3,
     left: 0;
     top: 0;
     width: 100%;
+    border: none !important;
+    box-shadow: none !important;
   }
   .no-print {
     display: none !important;
+  }
+  /* Never split the QR/share block itself across a page boundary — worst
+     case it starts a fresh page as one whole unit instead of tearing a QR
+     code in half. */
+  #passport-share-block {
+    break-inside: avoid;
   }
 }
