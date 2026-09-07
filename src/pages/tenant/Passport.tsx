@@ -204,6 +204,12 @@ export function TenantPassport() {
     if (!user) return;
     setCreatingShare(true);
     try {
+      // A physical/printed Passport only has room for one QR code, and an
+      // old share nobody's looking at anymore is still a live, scannable
+      // link if it isn't revoked — so generating a new one retires every
+      // other currently-active share instead of just letting the card
+      // accumulate an ever-growing list of them.
+      await Promise.all(activeShares.map((s) => api.revokePassportShare(s.id)));
       await api.createPassportShare(user.id, null, expiresInDays ? Number(expiresInDays) : null);
       await load();
     } finally {
@@ -223,6 +229,12 @@ export function TenantPassport() {
   const streak = computeOnTimeStreak(payments);
   const { level } = milestones.length ? computePerfectPayLevel(streak, milestones) : { level: "new" as PerfectPayLevel };
   const verifiedLeaseCount = new Set(applications.filter((a) => a.status === "approved").map((a) => a.property_id)).size;
+  // Only ever one live QR on the card at a time (see handleShareLink) — this
+  // is a defensive filter for any share created before that rule existed,
+  // so an old, forgotten-but-technically-still-valid link never prints
+  // alongside a newer one.
+  const activeShares = shares.filter((s) => !s.revoked_at && !(s.expires_at && new Date(s.expires_at) < new Date()));
+  const currentShare = [...activeShares].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
   // Real counts from the same landlord-confirmed payments record Perfect
   // Pay is built on (see PaymentVerification) — never a separate invented
   // "credit score"-style number.
@@ -378,11 +390,9 @@ export function TenantPassport() {
                 {creatingShare ? "Creating…" : "Generate link + QR code"}
               </Button>
             </div>
-            {shares.length > 0 ? (
-              <div className="mt-4 space-y-2">
-                {shares.map((s) => (
-                  <ShareRow key={s.id} share={s} onRevoke={() => handleRevoke(s.id)} />
-                ))}
+            {currentShare ? (
+              <div className="mt-4">
+                <ShareRow share={currentShare} onRevoke={() => handleRevoke(currentShare.id)} />
               </div>
             ) : (
               <p className="no-print mt-3 text-sm text-slate-400">
