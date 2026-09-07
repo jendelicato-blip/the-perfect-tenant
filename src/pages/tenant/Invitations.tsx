@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { PropertyWithPhotos, TenantInvitation } from "@/types/domain";
+import type { InvitationStatus, PropertyWithPhotos, TenantInvitation } from "@/types/domain";
 
 export function TenantInvitations() {
   const { user } = useAuth();
@@ -26,7 +26,7 @@ export function TenantInvitations() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  async function respond(id: string, status: "accepted" | "declined") {
+  async function respond(id: string, status: InvitationStatus) {
     await api.respondToInvitation(id, status);
     await load();
   }
@@ -56,17 +56,45 @@ export function TenantInvitations() {
                 <Badge tone={inv.status === "accepted" ? "success" : inv.status === "declined" ? "default" : "brand"}>{inv.status}</Badge>
               </div>
               {inv.status === "sent" && (
-                <div className="mt-4 flex gap-2">
-                  <Button onClick={() => respond(inv.id, "accepted")}>Accept & view listing</Button>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {property && (
+                    <Link
+                      to={`/properties/${property.id}`}
+                      className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      View listing
+                    </Link>
+                  )}
+                  <Button onClick={() => respond(inv.id, "accepted")}>Accept</Button>
                   <Button variant="secondary" onClick={() => respond(inv.id, "declined")}>
                     Decline
                   </Button>
                 </div>
               )}
-              {inv.status === "accepted" && property && (
-                <Link to={`/properties/${property.id}`} className="mt-3 inline-block text-sm font-medium text-brand-600 hover:underline">
-                  View listing & apply
-                </Link>
+              {inv.status === "accepted" && (
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {property && (
+                    <Link to={`/properties/${property.id}`} className="text-sm font-medium text-brand-600 hover:underline">
+                      View listing &amp; apply
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => respond(inv.id, "sent")}
+                    className="text-sm font-medium text-slate-400 underline decoration-dotted hover:text-slate-600"
+                  >
+                    Accepted by mistake? Undo
+                  </button>
+                </div>
+              )}
+              {inv.status === "declined" && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => respond(inv.id, "sent")}
+                    className="text-sm font-medium text-slate-400 underline decoration-dotted hover:text-slate-600"
+                  >
+                    Declined by mistake? Undo
+                  </button>
+                </div>
               )}
             </Card>
           );
