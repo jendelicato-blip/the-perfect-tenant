@@ -4,11 +4,12 @@ import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import * as api from "@/lib/data/api";
 import type { PassportViewWithViewer } from "@/lib/data/api";
-import { Badge, VerificationBadge } from "@/components/ui/Badge";
+import { Badge } from "@/components/ui/Badge";
 import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Field";
+import { Logo } from "@/components/Logo";
 import {
   BriefcaseIcon,
   CalendarCheckIcon,
@@ -35,6 +36,7 @@ import {
   type RentalReadyLevel,
   type TenantSummary,
   type TenantVerificationDetails,
+  type VerificationStatus,
 } from "@/types/domain";
 
 const LEVEL_EMOJI: Record<PerfectPayLevel, string> = { new: "⚪", bronze: "🥉", silver: "🥈", gold: "🥇", platinum: "💎" };
@@ -50,13 +52,13 @@ const VERIFICATION_ICON: Record<string, (props: { className?: string }) => JSX.E
   references: PeopleIcon,
 };
 
-// The shield graphic mirrors RentalReadyBadge's own 3-level system/colors
-// (see Badge.tsx) — just drawn as a shield instead of a pill, closer to a
-// physical ID card's "verified" seal.
-const SHIELD_TONE: Record<RentalReadyLevel, string> = {
-  rental_ready: "text-emerald-600",
-  almost_ready: "text-amber-500",
-  action_required: "text-red-500",
+// The shield+ribbon graphic mirrors RentalReadyBadge's own 3-level
+// system/colors (see Badge.tsx) — just drawn as a physical ID-card seal
+// instead of a pill.
+const SHIELD_TONE: Record<RentalReadyLevel, { icon: string; ribbon: string }> = {
+  rental_ready: { icon: "text-emerald-600", ribbon: "bg-emerald-600" },
+  almost_ready: { icon: "text-amber-500", ribbon: "bg-amber-500" },
+  action_required: { icon: "text-red-500", ribbon: "bg-red-500" },
 };
 const SHIELD_LABEL: Record<RentalReadyLevel, string> = {
   rental_ready: "Rental Ready",
@@ -65,14 +67,33 @@ const SHIELD_LABEL: Record<RentalReadyLevel, string> = {
 };
 
 function RentalReadyShield({ level }: { level: RentalReadyLevel }) {
+  const tone = SHIELD_TONE[level];
   return (
     <div className="flex flex-none flex-col items-center">
-      <ShieldCheckIcon className={`h-14 w-14 ${SHIELD_TONE[level]}`} />
-      <p className={`mt-1 text-center text-xs font-bold uppercase leading-tight ${SHIELD_TONE[level]}`}>
+      <ShieldCheckIcon className={`h-14 w-14 ${tone.icon}`} />
+      <span className={`-mt-1 rounded px-2.5 py-0.5 text-center text-[11px] font-bold uppercase leading-tight text-white ${tone.ribbon}`}>
         {SHIELD_LABEL[level]}
-      </p>
+      </span>
+      {level === "rental_ready" && <span className="mt-0.5 text-[10px] font-semibold uppercase text-emerald-600">Verified</span>}
     </div>
   );
+}
+
+// Plain colored status text for the Verification Summary rows — closer to a
+// physical ID card's look than a pill badge (VerificationBadge, used on
+// VerificationCenter.tsx, stays a pill there; this page just renders the
+// same underlying VerificationStatus differently).
+const STATUS_TEXT: Record<VerificationStatus, { label: string; className: string }> = {
+  verified: { label: "Verified", className: "text-emerald-700" },
+  pending: { label: "Pending", className: "text-amber-600" },
+  not_started: { label: "Not started", className: "text-slate-400" },
+  failed: { label: "Failed", className: "text-red-600" },
+  expired: { label: "Expired", className: "text-slate-400" },
+};
+
+function PlainStatus({ status }: { status: VerificationStatus }) {
+  const s = STATUS_TEXT[status];
+  return <span className={`text-sm font-semibold ${s.className}`}>{s.label}</span>;
 }
 
 // Same derivation used in AccountMenu.tsx/Home.tsx — there's no separate
@@ -237,6 +258,19 @@ export function TenantPassport() {
           stylesheet (see index.css), so "Print Passport" produces just this,
           not the whole page. */}
       <div id="passport-card" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* Self-contained card branding — a printed or screenshotted card
+            should carry its own header regardless of the app chrome around
+            it, so this repeats the real logo + real tagline (see Logo.tsx's
+            alt text) rather than relying on the page's own Navbar. */}
+        <div className="flex flex-col items-center gap-1 bg-ink-900 px-6 py-5 text-center">
+          <div className="rounded-lg bg-white px-2.5 py-1.5">
+            <Logo className="h-7 w-auto" />
+          </div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">
+            Verified · Trusted · Ready to Rent
+          </p>
+        </div>
+
         <div className="px-6 py-6">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -256,34 +290,35 @@ export function TenantPassport() {
             <div className="min-w-0">
               <h2 className="text-lg font-bold text-slate-900">{name}</h2>
               <p className="text-sm text-slate-500">{summary.user.email}</p>
+              {user?.phone && <p className="text-sm text-slate-500">{user.phone}</p>}
             </div>
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-y-4 border-t border-slate-100 pt-5 sm:grid-cols-4">
             <div className="text-center">
-              <MedalIcon className="mx-auto h-7 w-7 text-brand-600" />
+              <MedalIcon className="mx-auto h-7 w-7 text-ink-700" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Perfect Pay™</p>
-              <p className="text-sm font-semibold text-ink-900">
+              <p className="text-sm font-bold text-ink-900">
                 {LEVEL_EMOJI[level]} {level[0].toUpperCase() + level.slice(1)}
               </p>
-              <p className="text-xs text-slate-500">{streak} on-time streak</p>
+              <p className="text-xs font-medium text-emerald-700">{streak} on-time streak</p>
             </div>
             <div className="text-center">
-              <CalendarCheckIcon className="mx-auto h-7 w-7 text-brand-600" />
+              <CalendarCheckIcon className="mx-auto h-7 w-7 text-ink-700" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">On-Time Rate</p>
-              <p className="text-sm font-semibold text-ink-900">{onTimeRate !== null ? `${onTimeRate}%` : "—"}</p>
-              <p className="text-xs text-slate-500">{onTimePaymentCount} confirmed payments</p>
+              <p className="text-sm font-bold text-ink-900">{onTimeRate !== null ? `${onTimeRate}%` : "—"}</p>
+              <p className="text-xs font-medium text-emerald-700">{onTimePaymentCount} confirmed payments</p>
             </div>
             <div className="text-center">
-              <HouseIcon className="mx-auto h-7 w-7 text-brand-600" />
+              <HouseIcon className="mx-auto h-7 w-7 text-ink-700" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Verified Leases</p>
-              <p className="text-sm font-semibold text-ink-900">{verifiedLeaseCount}</p>
+              <p className="text-sm font-bold text-ink-900">{verifiedLeaseCount}</p>
             </div>
             <div className="text-center">
-              <ShieldCheckIcon className="mx-auto h-7 w-7 text-gold-600" />
+              <ShieldCheckIcon className="mx-auto h-7 w-7 text-ink-700" />
               <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">Perfect10ant Verified™</p>
               {summary.perfect10antVerified ? (
-                <p className="text-sm font-semibold text-gold-700">Verified</p>
+                <p className="text-sm font-bold text-gold-700">Verified</p>
               ) : (
                 <Link to="/verified" className="no-print text-sm font-medium text-brand-700 hover:underline">
                   Get Verified →
@@ -312,7 +347,7 @@ export function TenantPassport() {
                       <span className="truncate">{r.label.replace(/^./, (c) => c.toUpperCase())}</span>
                     </span>
                     <span className="flex-none">
-                      <VerificationBadge status={summary.verification[r.key]} />
+                      <PlainStatus status={summary.verification[r.key]} />
                     </span>
                   </li>
                 );
@@ -358,9 +393,9 @@ export function TenantPassport() {
         </div>
 
         {lastVerifiedAt && (
-          <div className="flex items-center gap-2 border-t border-emerald-100 bg-emerald-50 px-6 py-3">
+          <div className="flex items-center gap-2 border-t border-slate-100 px-6 py-3">
             <ShieldCheckIcon className="h-5 w-5 flex-none text-emerald-600" />
-            <p className="text-xs text-emerald-800">
+            <p className="text-xs text-slate-500">
               Reflects real verification data — last verified {new Date(lastVerifiedAt).toLocaleDateString()}.
             </p>
           </div>

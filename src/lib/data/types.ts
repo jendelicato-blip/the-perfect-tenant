@@ -13,6 +13,11 @@ export interface AuthUser {
   email: string;
   role: Role;
   is_admin: boolean;
+  // Self-read only — getCurrentUser() always resolves to "my own session," so
+  // exposing this here never leaks a phone number to anyone but its owner
+  // (unlike TenantSummary.user, which also serves a landlord's view of a
+  // tenant and deliberately stays narrower — see supabaseApi.ts's note there).
+  phone: string | null;
 }
 
 export interface PropertyFilter {

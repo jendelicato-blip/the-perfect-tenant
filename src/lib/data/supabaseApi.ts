@@ -135,7 +135,7 @@ export async function signUp(email: string, password: string, role: Role): Promi
     await db.from("subscriptions").insert({ landlord_id: authUser.id, tier: "starter", status: "trialing" });
   }
 
-  return { id: authUser.id, email, role, is_admin: false };
+  return { id: authUser.id, email, role, is_admin: false, phone: null };
 }
 
 export async function signIn(email: string, password: string): Promise<AuthUser> {
@@ -144,7 +144,7 @@ export async function signIn(email: string, password: string): Promise<AuthUser>
   if (error) throw new ApiError(error.message);
   const { data: profile, error: profileError } = await db
     .from("users")
-    .select("id, email, role, is_admin")
+    .select("id, email, role, is_admin, phone")
     .eq("id", data.user.id)
     .single();
   if (profileError) throw new ApiError(profileError.message);
@@ -162,7 +162,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!data.session) return null;
   const { data: profile } = await db
     .from("users")
-    .select("id, email, role, is_admin")
+    .select("id, email, role, is_admin, phone")
     .eq("id", data.session.user.id)
     .single();
   return (profile as AuthUser) ?? null;

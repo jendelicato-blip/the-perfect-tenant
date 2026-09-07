@@ -132,7 +132,7 @@ export async function signUp(email: string, password: string, role: Role): Promi
     }
 
     db.currentUserId = id;
-    return { id, email, role, is_admin: false };
+    return { id, email, role, is_admin: false, phone: null };
   });
 }
 
@@ -143,7 +143,7 @@ export async function signIn(email: string, password: string): Promise<AuthUser>
       throw new ApiError("Invalid email or password.");
     }
     db.currentUserId = user.id;
-    return { id: user.id, email: user.email, role: user.role, is_admin: user.is_admin };
+    return { id: user.id, email: user.email, role: user.role, is_admin: user.is_admin, phone: user.phone };
   });
 }
 
@@ -158,7 +158,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!db.currentUserId) return null;
   const user = db.users.find((u) => u.id === db.currentUserId);
   if (!user) return null;
-  return { id: user.id, email: user.email, role: user.role, is_admin: user.is_admin };
+  return { id: user.id, email: user.email, role: user.role, is_admin: user.is_admin, phone: user.phone };
 }
 
 // ---------- Tenant profile ----------
