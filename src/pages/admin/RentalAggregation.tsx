@@ -44,6 +44,13 @@ function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : "—";
 }
 
+function nextScheduledSync(lastSyncedAt: string | null, syncIntervalMinutes: number | null): string {
+  if (!syncIntervalMinutes) return "—";
+  const base = lastSyncedAt ? new Date(lastSyncedAt).getTime() : Date.now();
+  const due = new Date(base + syncIntervalMinutes * 60_000);
+  return due.getTime() <= Date.now() ? "Due now (next 15-min cron tick)" : due.toLocaleString();
+}
+
 // ---------- Add source ----------
 
 function AddSourceForm({ onCreated }: { onCreated: () => void }) {
@@ -52,6 +59,8 @@ function AddSourceForm({ onCreated }: { onCreated: () => void }) {
   const [licenseStatus, setLicenseStatus] = useState<DataLicenseStatus>("review_required");
   const [priorityRank, setPriorityRank] = useState("3");
   const [contactEmail, setContactEmail] = useState("");
+  const [feedUrl, setFeedUrl] = useState("");
+  const [syncIntervalMinutes, setSyncIntervalMinutes] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -65,7 +74,8 @@ function AddSourceForm({ onCreated }: { onCreated: () => void }) {
         license_status: licenseStatus,
         connector_key: "csv_upload",
         priority_rank: Number(priorityRank) || 5,
-        sync_interval_minutes: null,
+        feed_url: feedUrl.trim() || null,
+        sync_interval_minutes: syncIntervalMinutes.trim() ? Number(syncIntervalMinutes) : null,
         rate_limit_per_hour: null,
         contact_name: null,
         contact_email: contactEmail.trim() || null,
@@ -73,6 +83,8 @@ function AddSourceForm({ onCreated }: { onCreated: () => void }) {
       });
       setName("");
       setContactEmail("");
+      setFeedUrl("");
+      setSyncIntervalMinutes("");
       setNotes("");
       onCreated();
     } finally {
@@ -106,7 +118,19 @@ function AddSourceForm({ onCreated }: { onCreated: () => void }) {
         <Input type="number" min={1} max={5} placeholder="Priority rank (1=highest)" value={priorityRank} onChange={(e) => setPriorityRank(e.target.value)} />
         <Input placeholder="Contact email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
         <Input placeholder="Notes (licensing terms, contact context...)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <Input placeholder="Feed URL (optional — enables scheduled sync)" value={feedUrl} onChange={(e) => setFeedUrl(e.target.value)} />
+        <Input
+          type="number"
+          min={1}
+          placeholder="Sync every N minutes (requires feed URL)"
+          value={syncIntervalMinutes}
+          onChange={(e) => setSyncIntervalMinutes(e.target.value)}
+        />
       </div>
+      <p className="mt-2 text-xs text-slate-400">
+        When both a feed URL and a sync interval are set, the scheduled sync job (runs every 15 minutes) fetches that
+        URL's CSV automatically once the source is active — no admin upload required.
+      </p>
       <Button className="mt-3" disabled={saving || !name.trim()} onClick={submit}>
         {saving ? "Adding…" : "Add source"}
       </Button>
@@ -123,6 +147,10 @@ function SourceRow({ stats, onChanged }: { stats: SourceStats; onChanged: () => 
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [feedUrlDraft, setFeedUrlDraft] = useState(source.feed_url ?? "");
+  const [syncIntervalDraft, setSyncIntervalDraft] = useState(source.sync_interval_minutes?.toString() ?? "");
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   const canActivate = source.license_status !== "review_required" && source.license_status !== "disabled";
 
@@ -130,6 +158,20 @@ function SourceRow({ stats, onChanged }: { stats: SourceStats; onChanged: () => 
     if (!source.active && !canActivate) return;
     await api.updateRentalSource(source.id, { active: !source.active });
     onChanged();
+  }
+
+  async function saveSchedule() {
+    setSavingSchedule(true);
+    try {
+      await api.updateRentalSource(source.id, {
+        feed_url: feedUrlDraft.trim() || null,
+        sync_interval_minutes: syncIntervalDraft.trim() ? Number(syncIntervalDraft) : null,
+      });
+      setScheduleOpen(false);
+      onChanged();
+    } finally {
+      setSavingSchedule(false);
+    }
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -172,6 +214,12 @@ function SourceRow({ stats, onChanged }: { stats: SourceStats; onChanged: () => 
         <div className="text-right text-xs text-slate-500">
           <p>{stats.propertiesImported} properties · {stats.unitsImported} units imported</p>
           <p>Last synced: {formatDate(source.last_synced_at)}</p>
+          {source.feed_url && (
+            <p>
+              Scheduled sync: every {source.sync_interval_minutes ?? "?"} min · next{" "}
+              {nextScheduledSync(source.last_synced_at, source.sync_interval_minutes)}
+            </p>
+          )}
         </div>
       </div>
 
@@ -189,6 +237,9 @@ function SourceRow({ stats, onChanged }: { stats: SourceStats; onChanged: () => 
         <Button variant="secondary" onClick={() => setCsvOpen((v) => !v)} disabled={!source.active}>
           {csvOpen ? "Close" : "Run CSV sync"}
         </Button>
+        <Button variant="secondary" onClick={() => setScheduleOpen((v) => !v)}>
+          {scheduleOpen ? "Close" : "Edit schedule"}
+        </Button>
         <Button
           variant="danger"
           onClick={() => {
@@ -199,6 +250,28 @@ function SourceRow({ stats, onChanged }: { stats: SourceStats; onChanged: () => 
           Mark unreliable
         </Button>
       </div>
+
+      {scheduleOpen && (
+        <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs text-slate-500">
+            When both fields are set and this source is active, the scheduled sync job (pg_cron, every 15 minutes)
+            fetches the feed URL's CSV automatically once the interval below has elapsed — no manual upload needed.
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Input placeholder="Feed URL" value={feedUrlDraft} onChange={(e) => setFeedUrlDraft(e.target.value)} />
+            <Input
+              type="number"
+              min={1}
+              placeholder="Sync every N minutes"
+              value={syncIntervalDraft}
+              onChange={(e) => setSyncIntervalDraft(e.target.value)}
+            />
+          </div>
+          <Button disabled={savingSchedule} onClick={saveSchedule}>
+            {savingSchedule ? "Saving…" : "Save schedule"}
+          </Button>
+        </div>
+      )}
 
       {csvOpen && (
         <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -237,6 +310,9 @@ function SyncRunHistory({ runs }: { runs: RentalSyncRun[] }) {
             <Badge tone={run.status === "succeeded" ? "success" : run.status === "failed" ? "warning" : "default"}>
               {run.status}
             </Badge>
+            <span className="ml-1">
+              <Badge tone="default">{run.triggered_by ? "Manual" : "Scheduled"}</Badge>
+            </span>
             <span className="ml-2 text-slate-500">{formatDate(run.started_at)}</span>
           </div>
           <p className="text-xs text-slate-500">

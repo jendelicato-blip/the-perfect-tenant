@@ -921,6 +921,11 @@ export interface RentalSource {
   license_status: DataLicenseStatus;
   connector_key: string;
   priority_rank: number;
+  /** When set, a scheduled sync (pg_cron -> rental-sync-cron edge function)
+   *  fetches CSV content from this URL every sync_interval_minutes instead
+   *  of waiting for an admin's manual upload. Null means this source is
+   *  manual-upload-only. */
+  feed_url: string | null;
   sync_interval_minutes: number | null;
   rate_limit_per_hour: number | null;
   contact_name: string | null;

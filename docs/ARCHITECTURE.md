@@ -604,21 +604,62 @@ not built in this phase.
 ### Admin console (`src/pages/admin/RentalAggregation.tsx`, `/admin/rental-aggregation`)
 
 Source management (add/activate/deactivate/mark unreliable, license-status enforcement mirrored
-from the DB constraint), CSV upload + sync trigger, sync run history, an inventory browser with
-expandable per-property unit lists, the duplicate review queue (merge/keep separate/ignore — merge
-moves the "losing" property's units and source records onto the "keeping" property and marks the
-loser `active: false`, never deletes it), and the freshness-threshold editor.
+from the DB constraint, an "Edit schedule" panel for `feed_url`/`sync_interval_minutes` with a
+computed "next scheduled sync" time), CSV upload + sync trigger, sync run history (tagged
+"Scheduled" vs. "Manual" by whether `triggered_by` is null), an inventory browser with expandable
+per-property unit lists, the duplicate review queue (merge/keep separate/ignore — merge moves the
+"losing" property's units and source records onto the "keeping" property and marks the loser
+`active: false`, never deletes it), and the freshness-threshold editor.
+
+### Scheduled sync (`0018_rental_source_feed_url.sql`, `0019_rental_sync_scheduling.sql`)
+
+The CSV connector is inherently push-based (an admin uploads a file), so a schedule needs something
+to actually fetch on each tick. `rental_sources.feed_url` closes that gap: when an admin sets it (a
+stable HTTPS URL the source has given permission to fetch from — never a scrape target, consistent
+with the compliance stance above) alongside `sync_interval_minutes`, the source becomes eligible for
+automatic sync.
+
+```
+pg_cron ('rental-sync-cron-tick', every 15 min)
+  --net.http_post--> rental-sync-cron edge function
+  --for each active source with feed_url + elapsed sync_interval_minutes--
+  fetch feed_url --parseCsv/normalizeCsvRow/validateParsedRow--> buildSyncPlan (same pure logic as
+  the admin CSV upload path) --> DB writes + rental_sync_runs row (triggered_by: null)
+```
+
+- **`pg_cron` / `pg_net`** are enabled via migration 0019 (previously available but off). The cron
+  job body runs every 15 minutes and calls the edge function with an `x-cron-secret` header.
+- **Auth**: `rental-sync-cron` is deployed with `verify_jwt = false` (pg_cron has no Supabase user
+  session to attach a JWT for). Instead it checks that header against
+  `public.verify_rental_sync_cron_secret(candidate text)`, a `SECURITY DEFINER` function that
+  compares against a value stored in Supabase Vault and returns only a boolean — `EXECUTE` is
+  revoked from `public`/`anon`/`authenticated` and granted only to `service_role`. The RPC indirection
+  exists because the `vault` schema isn't exposed through PostgREST (the REST API the edge function's
+  `supabase-js` client talks to) — only direct SQL, like the cron job body itself or a
+  `SECURITY DEFINER` function, can read `vault.decrypted_secrets`. The secret itself was generated
+  with `openssl rand -hex 32` and stored via `vault.create_secret(...)` run directly against the
+  project — it is never written into a migration file or committed to git.
+- **`supabase/functions/rental-sync-cron/`** is a tracked duplicate of
+  `src/lib/aggregation/{normalize,matching,csv,syncPipeline}.ts` (Edge Functions deploy as an
+  isolated file set — no shared import across the Deno/browser boundary into the app's own `src/`
+  tree) plus its own `index.ts` orchestrating fetch → normalize → validate → match → upsert, using
+  the exact same `buildSyncPlan` decision logic and priority-rank rules as an admin's manual CSV sync.
+  Keep these files in sync with their `src/lib/aggregation/` counterparts if either changes.
+- **`supabase/functions/rental-demo-feed/`** is a test fixture only (clearly labeled as such in its
+  own header) — a static CSV used to verify the scheduled path end-to-end without a real external
+  feed. It is not a real rental data source and nothing points a real source's `feed_url` at it.
+- Verified end-to-end: a temporary test `rental_sources` row pointed at `rental-demo-feed`,
+  manually invoked via `net.http_post` with the correct `x-cron-secret`, produced a `succeeded`
+  `rental_sync_runs` row (`triggered_by: null`) and created the expected canonical property + unit —
+  then removed once confirmed.
 
 ### What's deliberately not built yet
 
 - **No connectors beyond CSV upload.** No real third-party API/feed integration exists — see the
-  compliance stance above for why.
+  compliance stance above for why. `feed_url` only changes *when* the CSV connector runs, not what
+  connector is used.
 - **No public search or map.** `agg_properties`/`agg_units` aren't read from anywhere a tenant can
   reach. Wiring that up is a distinct follow-up once the admin tooling has real mileage on it.
-- **No automatic recurring sync.** `rental_sources.sync_interval_minutes` models the intent, but
-  actually running syncs on a schedule needs a scheduler — Supabase's `pg_cron` extension is
-  available on this project (confirmed but not enabled) and is the natural next step; today every
-  sync is admin-triggered.
 - **No per-field provenance UI** (see Source priority above) and no automated fraud/trust-score
   computation beyond the `trust_score`/`quality_flags` columns existing on the schema — nothing
   populates them algorithmically yet.

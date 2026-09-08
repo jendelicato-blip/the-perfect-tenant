@@ -159,6 +159,7 @@ export interface NewRentalSource {
   license_status: import("@/types/domain").DataLicenseStatus;
   connector_key: string;
   priority_rank: number;
+  feed_url: string | null;
   sync_interval_minutes: number | null;
   rate_limit_per_hour: number | null;
   contact_name: string | null;
