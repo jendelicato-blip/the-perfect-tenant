@@ -9,12 +9,11 @@ import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { RentalReadyBadge } from "@/components/ui/Badge";
-import { computeRentalReady, type Application, type TenantSummary } from "@/types/domain";
+import { computeRentalReady, type TenantSummary } from "@/types/domain";
 
 // Every other tab-bar destination gets a one-tap shortcut here, so Home
-// works as a real hub — not just the 4 data-backed cards below (which stay
-// as the richer widgets for Perfect Pay/Perfect Match/Perfect Rent/
-// Applications).
+// works as a real hub — not just the 3 data-backed cards below (which stay
+// as the richer widgets for Perfect Pay/Perfect Match/Perfect Rent).
 const QUICK_LINKS: { to: string; label: string; emoji: string }[] = [
   { to: "/search", label: "Search", emoji: "🔍" },
   { to: "/saved", label: "Saved", emoji: "❤️" },
@@ -23,6 +22,7 @@ const QUICK_LINKS: { to: string; label: string; emoji: string }[] = [
   { to: "/passport", label: "My Passport", emoji: "🪪" },
   { to: "/partners", label: "Perfect Partners™", emoji: "🤝" },
   { to: "/rewards", label: "Rewards", emoji: "🏆" },
+  { to: "/applications", label: "Applications", emoji: "📄" },
 ];
 
 function displayNameFromEmail(email: string): string {
@@ -42,7 +42,6 @@ export function TenantHome() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<TenantSummary | null>(null);
   const [matches, setMatches] = useState<ScoredProperty[]>([]);
-  const [applications, setApplications] = useState<Application[]>([]);
   const [autopayOn, setAutopayOn] = useState(false);
   const [annualSavingsCents, setAnnualSavingsCents] = useState(0);
 
@@ -50,7 +49,6 @@ export function TenantHome() {
     if (!user) return;
     api.getTenantSummary(user.id).then(setSummary);
     api.getMatchesForTenant(user.id).then(setMatches);
-    api.listApplicationsForTenant(user.id).then(setApplications);
     api.getOwnAutoPaymentEnrollment(user.id).then(setAutopayOn);
   }, [user]);
 
@@ -82,7 +80,6 @@ export function TenantHome() {
   if (!user || !summary) return <div className="mx-auto max-w-2xl px-4 py-10 text-sm text-slate-500">Loading…</div>;
 
   const rentalReady = computeRentalReady(summary.verification);
-  const activeApplications = applications.filter((a) => a.status === "submitted" || a.status === "reviewing").length;
   const topMatch = [...matches].sort((a, b) => b.score - a.score)[0];
 
   return (
@@ -160,15 +157,6 @@ export function TenantHome() {
         </Card>
       )}
 
-      <Card className="mt-4 p-6">
-        <h2 className="font-semibold text-ink-900">Applications</h2>
-        <p className="mt-1 text-sm text-slate-600">{activeApplications} active</p>
-        <Link to="/applications">
-          <Button variant="secondary" className="mt-3 w-full">
-            View Applications
-          </Button>
-        </Link>
-      </Card>
     </div>
   );
 }
