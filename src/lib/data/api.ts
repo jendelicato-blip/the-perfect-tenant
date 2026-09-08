@@ -140,6 +140,24 @@ export const {
   uploadTenantDocument,
   deleteTenantDocument,
   getTenantDocumentUrl,
+  listRentalSources,
+  createRentalSource,
+  updateRentalSource,
+  markSourceUnreliable,
+  runCsvSync,
+  listSyncRuns,
+  listAggProperties,
+  getAggProperty,
+  listAggUnitsForProperty,
+  listAggPropertySources,
+  verifyAggProperty,
+  markAggPropertyInactive,
+  listDuplicateCandidates,
+  resolveDuplicateCandidate,
+  getFreshnessConfig,
+  updateFreshnessConfig,
+  getRentalAggregationSummary,
+  getSourceStats,
 } = impl;
 
 export type {
@@ -156,4 +174,8 @@ export type {
   PropertyFilter,
   ScoredProperty,
   TenantAutopayStatus,
+  NewRentalSource,
+  AggPropertyFilter,
+  RentalAggregationSummary,
+  SourceStats,
 } from "./types";

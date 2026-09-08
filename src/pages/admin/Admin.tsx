@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import * as api from "@/lib/data/api";
 import type { AdminMetrics } from "@/lib/data/api";
 import { BackButton } from "@/components/ui/BackButton";
@@ -109,7 +110,15 @@ export function AdminDashboard() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <BackButton fallback="/landlord" className="mb-4" />
-      <h1 className="text-2xl font-bold text-slate-900">Admin</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-slate-900">Admin</h1>
+        <Link
+          to="/admin/rental-aggregation"
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+        >
+          Rental Aggregation Engine →
+        </Link>
+      </div>
 
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatTile label="Total tenants" value={metrics.totalTenants} />

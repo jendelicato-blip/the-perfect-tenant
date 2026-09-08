@@ -150,3 +150,52 @@ export interface AdvertisingRevenue {
   yearCents: number;
   totalCents: number;
 }
+
+// ---------- Rental Property Aggregation Engine (admin-only, Phase 1) ----------
+
+export interface NewRentalSource {
+  name: string;
+  source_type: import("@/types/domain").RentalSourceType;
+  license_status: import("@/types/domain").DataLicenseStatus;
+  connector_key: string;
+  priority_rank: number;
+  sync_interval_minutes: number | null;
+  rate_limit_per_hour: number | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  notes: string | null;
+}
+
+export interface AggPropertyFilter {
+  city?: string;
+  zip?: string;
+  state?: string;
+  verification_status?: import("@/types/domain").AggVerificationStatus;
+  active?: boolean;
+}
+
+// The counts behind the admin "Inventory" / "Data Quality" panels (spec
+// sections 12 & 14) — every number here is a real aggregate query, never a
+// placeholder.
+export interface RentalAggregationSummary {
+  totalProperties: number;
+  totalActiveUnits: number;
+  newPropertiesToday: number;
+  updatedPropertiesToday: number;
+  expiredPropertiesCount: number;
+  needsVerificationCount: number;
+  duplicateRatePercent: number;
+  missingRentCount: number;
+  missingPhotosCount: number;
+  missingAvailabilityDateCount: number;
+  staleListingsCount: number;
+  pendingDuplicateCandidates: number;
+  failedSyncRunsCount: number;
+}
+
+export interface SourceStats {
+  source: import("@/types/domain").RentalSource;
+  propertiesImported: number;
+  unitsImported: number;
+  lastRun: import("@/types/domain").RentalSyncRun | null;
+}

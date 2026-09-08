@@ -60,9 +60,19 @@ import type {
   VerifiedPurchase,
   VerifiedTierConfig,
   WebhookEvent,
+  RentalSource,
+  RentalSyncRun,
+  AggProperty,
+  AggUnit,
+  AggDuplicateCandidate,
+  AggFreshnessConfig,
+  DuplicateCandidateStatus,
 } from "@/types/domain";
 import { computeOnTimeStreak } from "@/types/domain";
 import { scoreMatch } from "@/lib/match/score";
+import { getConnector } from "@/lib/aggregation/connector";
+import { buildSyncPlan } from "@/lib/aggregation/syncPipeline";
+import type { MatchableProperty } from "@/lib/aggregation/matching";
 import { supabase } from "./supabaseClient";
 import {
   ApiError,
@@ -79,6 +89,10 @@ import {
   type PropertyFilter,
   type ScoredProperty,
   type TenantAutopayStatus,
+  type NewRentalSource,
+  type AggPropertyFilter,
+  type RentalAggregationSummary,
+  type SourceStats,
 } from "./types";
 
 export { ApiError };
@@ -1715,3 +1729,506 @@ export const startCheckout: import("./types").StartCheckout = async (_landlordId
   if (error || !data?.url) return null;
   return data.url;
 };
+
+// ---------- Rental Property Aggregation Engine (admin-only, Phase 1) ----------
+
+function toMatchableProperty(p: AggProperty): MatchableProperty {
+  return {
+    id: p.id,
+    property_name: p.property_name,
+    address: p.address,
+    city: p.city,
+    state: p.state,
+    zip: p.zip,
+    latitude: p.latitude,
+    longitude: p.longitude,
+    management_company: p.management_company,
+    management_contact: p.management_contact,
+    website: p.website,
+  };
+}
+
+export async function listRentalSources(): Promise<RentalSource[]> {
+  const db = client();
+  const { data, error } = await db.from("rental_sources").select("*").order("priority_rank", { ascending: true });
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as RentalSource[];
+}
+
+export async function createRentalSource(input: NewRentalSource): Promise<RentalSource> {
+  const db = client();
+  const { data: session } = await db.auth.getSession();
+  const { data, error } = await db
+    .from("rental_sources")
+    .insert({ ...input, active: false, created_by: session.session?.user.id ?? null })
+    .select()
+    .single();
+  if (error) throw new ApiError(error.message);
+  return data as RentalSource;
+}
+
+export async function updateRentalSource(id: string, patch: Partial<Omit<RentalSource, "id" | "created_at">>): Promise<void> {
+  const db = client();
+  if (patch.active) {
+    const { data: existing } = await db.from("rental_sources").select("license_status").eq("id", id).maybeSingle();
+    const nextStatus = patch.license_status ?? existing?.license_status;
+    if (nextStatus === "review_required" || nextStatus === "disabled") {
+      throw new ApiError("Cannot activate a source whose license status is review_required or disabled.");
+    }
+  }
+  const { error } = await db.from("rental_sources").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new ApiError(error.message);
+}
+
+export async function markSourceUnreliable(sourceId: string, note: string): Promise<void> {
+  const db = client();
+  const { data: existing } = await db.from("rental_sources").select("notes").eq("id", sourceId).maybeSingle();
+  const notes = existing?.notes ? `${existing.notes}\n\n[Marked unreliable] ${note}` : `[Marked unreliable] ${note}`;
+  const { error } = await db.from("rental_sources").update({ active: false, notes, updated_at: new Date().toISOString() }).eq("id", sourceId);
+  if (error) throw new ApiError(error.message);
+}
+
+// Runs the one connector implemented in this phase end-to-end. Not wrapped in
+// a single DB transaction (Supabase's JS client has no client-side
+// transaction primitive) — each step is its own awaited call, same as every
+// other multi-step write in this file (e.g. reviewCampaign above).
+export async function runCsvSync(sourceId: string, csvText: string): Promise<RentalSyncRun> {
+  const db = client();
+  const { data: source, error: sourceError } = await db.from("rental_sources").select("*").eq("id", sourceId).maybeSingle();
+  if (sourceError) throw new ApiError(sourceError.message);
+  if (!source) throw new ApiError("Unknown rental source.");
+  if (!source.active) throw new ApiError("This source is not active.");
+
+  const connector = getConnector(source.connector_key);
+  if (!connector) throw new ApiError(`No connector registered for "${source.connector_key}".`);
+  await connector.authenticate();
+  const { rows, issues } = await connector.fetchAndNormalize({ payload: csvText });
+
+  const { data: existingSources } = await db
+    .from("agg_property_sources")
+    .select("source_property_id, agg_property_id")
+    .eq("source_id", sourceId);
+  const existingSourcePropertyMap = new Map<string, string>(
+    (existingSources ?? []).map((r) => [r.source_property_id as string, r.agg_property_id as string]),
+  );
+
+  const cities = [...new Set(rows.map((r) => r.property.city))];
+  const states = [...new Set(rows.map((r) => r.property.state))];
+  let candidateProperties: MatchableProperty[] = [];
+  if (cities.length > 0) {
+    const { data: candidates } = await db.from("agg_properties").select("*").in("city", cities).in("state", states);
+    candidateProperties = ((candidates ?? []) as AggProperty[]).map(toMatchableProperty);
+  }
+
+  const { data: freshnessRow } = await db.from("agg_freshness_config").select("duplicate_match_threshold").eq("id", "default").maybeSingle();
+  const duplicateMatchThreshold = freshnessRow?.duplicate_match_threshold ?? 0.72;
+
+  const plan = buildSyncPlan({ rows, issues, existingSourcePropertyMap, candidateProperties, duplicateMatchThreshold });
+
+  const now = new Date().toISOString();
+  let propertiesCreated = 0;
+  let propertiesUpdated = 0;
+  let unitsCreated = 0;
+  let unitsUpdated = 0;
+  let duplicatesCreated = 0;
+
+  for (const item of plan.items) {
+    let aggPropertyId: string;
+
+    if (item.existingAggPropertyId) {
+      aggPropertyId = item.existingAggPropertyId;
+      await db
+        .from("agg_property_sources")
+        .update({ raw_data: item.property.raw_data, last_seen: now, updated_at: now })
+        .eq("source_id", sourceId)
+        .eq("source_property_id", item.sourcePropertyId);
+
+      const { data: existingProperty } = await db.from("agg_properties").select("primary_source_id").eq("id", aggPropertyId).maybeSingle();
+      let winsPriority = true;
+      if (existingProperty?.primary_source_id) {
+        const { data: currentPrimary } = await db.from("rental_sources").select("priority_rank").eq("id", existingProperty.primary_source_id).maybeSingle();
+        winsPriority = !currentPrimary || source.priority_rank <= currentPrimary.priority_rank;
+      }
+      const propertyPatch: Record<string, unknown> = { last_seen: now, updated_at: now };
+      if (winsPriority) {
+        Object.assign(propertyPatch, {
+          property_name: item.property.property_name,
+          property_type: item.property.property_type,
+          address: item.property.address,
+          city: item.property.city,
+          state: item.property.state,
+          zip: item.property.zip,
+          county: item.property.county,
+          latitude: item.property.latitude,
+          longitude: item.property.longitude,
+          neighborhood: item.property.neighborhood,
+          description: item.property.description,
+          year_built: item.property.year_built,
+          total_units: item.property.total_units,
+          amenities: item.property.amenities,
+          pet_policy: item.property.pet_policy,
+          parking: item.property.parking,
+          utilities: item.property.utilities,
+          website: item.property.website,
+          management_company: item.property.management_company,
+          management_contact: item.property.management_contact,
+          primary_source_id: sourceId,
+        });
+      }
+      await db.from("agg_properties").update(propertyPatch).eq("id", aggPropertyId);
+      propertiesUpdated++;
+    } else {
+      const { data: newProperty, error: insertError } = await db
+        .from("agg_properties")
+        .insert({
+          property_name: item.property.property_name,
+          property_type: item.property.property_type,
+          address: item.property.address,
+          city: item.property.city,
+          state: item.property.state,
+          zip: item.property.zip,
+          county: item.property.county,
+          latitude: item.property.latitude,
+          longitude: item.property.longitude,
+          neighborhood: item.property.neighborhood,
+          description: item.property.description,
+          year_built: item.property.year_built,
+          total_units: item.property.total_units,
+          amenities: item.property.amenities,
+          pet_policy: item.property.pet_policy,
+          parking: item.property.parking,
+          utilities: item.property.utilities,
+          website: item.property.website,
+          management_company: item.property.management_company,
+          management_contact: item.property.management_contact,
+          primary_source_id: sourceId,
+          last_seen: now,
+        })
+        .select()
+        .single();
+      if (insertError || !newProperty) throw new ApiError(insertError?.message ?? "Failed to create property.");
+      aggPropertyId = newProperty.id as string;
+      propertiesCreated++;
+
+      await db.from("agg_property_sources").insert({
+        agg_property_id: aggPropertyId,
+        source_id: sourceId,
+        source_property_id: item.sourcePropertyId,
+        source_url: item.property.source_url,
+        raw_data: item.property.raw_data,
+        is_primary: true,
+        first_seen: now,
+        last_seen: now,
+      });
+
+      for (const match of item.duplicateMatches) {
+        await db.from("agg_duplicate_candidates").insert({
+          property_a_id: aggPropertyId,
+          property_b_id: match.existingPropertyId,
+          confidence: match.confidence,
+          match_reasons: match.reasons,
+          status: "pending",
+        });
+        duplicatesCreated++;
+      }
+    }
+
+    for (const unit of item.units) {
+      const { data: existingUnitSource } = await db
+        .from("agg_unit_sources")
+        .select("agg_unit_id")
+        .eq("source_id", sourceId)
+        .eq("source_unit_id", unit.source_unit_id)
+        .maybeSingle();
+
+      if (existingUnitSource) {
+        await db
+          .from("agg_unit_sources")
+          .update({ raw_data: unit.raw_data, last_seen: now, updated_at: now })
+          .eq("source_id", sourceId)
+          .eq("source_unit_id", unit.source_unit_id);
+
+        const { data: existingUnit } = await db.from("agg_units").select("primary_source_id").eq("id", existingUnitSource.agg_unit_id).maybeSingle();
+        let winsPriority = true;
+        if (existingUnit?.primary_source_id) {
+          const { data: unitPrimary } = await db.from("rental_sources").select("priority_rank").eq("id", existingUnit.primary_source_id).maybeSingle();
+          winsPriority = !unitPrimary || source.priority_rank <= unitPrimary.priority_rank;
+        }
+        const unitPatch: Record<string, unknown> = { last_seen: now, updated_at: now };
+        if (winsPriority) {
+          Object.assign(unitPatch, {
+            unit_number: unit.unit_number,
+            floor: unit.floor,
+            bedrooms: unit.bedrooms,
+            bathrooms: unit.bathrooms,
+            square_feet: unit.square_feet,
+            monthly_rent_cents: unit.monthly_rent_cents,
+            rent_min_cents: unit.rent_min_cents,
+            rent_max_cents: unit.rent_max_cents,
+            deposit_cents: unit.deposit_cents,
+            available_date: unit.available_date,
+            lease_term: unit.lease_term,
+            furnished: unit.furnished,
+            pets_allowed: unit.pets_allowed,
+            parking: unit.parking,
+            utilities: unit.utilities,
+            unit_amenities: unit.unit_amenities,
+            availability_status: unit.availability_status,
+            primary_source_id: sourceId,
+          });
+        }
+        await db.from("agg_units").update(unitPatch).eq("id", existingUnitSource.agg_unit_id);
+        unitsUpdated++;
+      } else {
+        const { data: newUnit, error: unitInsertError } = await db
+          .from("agg_units")
+          .insert({
+            agg_property_id: aggPropertyId,
+            unit_number: unit.unit_number,
+            floor: unit.floor,
+            bedrooms: unit.bedrooms,
+            bathrooms: unit.bathrooms,
+            square_feet: unit.square_feet,
+            monthly_rent_cents: unit.monthly_rent_cents,
+            rent_min_cents: unit.rent_min_cents,
+            rent_max_cents: unit.rent_max_cents,
+            deposit_cents: unit.deposit_cents,
+            available_date: unit.available_date,
+            lease_term: unit.lease_term,
+            furnished: unit.furnished,
+            pets_allowed: unit.pets_allowed,
+            parking: unit.parking,
+            utilities: unit.utilities,
+            unit_amenities: unit.unit_amenities,
+            availability_status: unit.availability_status,
+            primary_source_id: sourceId,
+            last_seen: now,
+          })
+          .select()
+          .single();
+        if (unitInsertError || !newUnit) throw new ApiError(unitInsertError?.message ?? "Failed to create unit.");
+
+        await db.from("agg_unit_sources").insert({
+          agg_unit_id: newUnit.id,
+          source_id: sourceId,
+          source_unit_id: unit.source_unit_id,
+          source_url: unit.source_url,
+          raw_data: unit.raw_data,
+          is_primary: true,
+          first_seen: now,
+          last_seen: now,
+        });
+        unitsCreated++;
+      }
+    }
+  }
+
+  await db.from("rental_sources").update({ last_synced_at: now }).eq("id", sourceId);
+
+  const { data: session } = await db.auth.getSession();
+  const { data: run, error: runError } = await db
+    .from("rental_sync_runs")
+    .insert({
+      source_id: sourceId,
+      status: rows.length === 0 ? "failed" : plan.issues.length > 0 ? "partial" : "succeeded",
+      finished_at: now,
+      properties_seen: plan.items.length,
+      properties_created: propertiesCreated,
+      properties_updated: propertiesUpdated,
+      units_seen: rows.length,
+      units_created: unitsCreated,
+      units_updated: unitsUpdated,
+      duplicate_candidates_created: duplicatesCreated,
+      errors_count: plan.issues.length,
+      error_log: plan.issues.map((i) => ({ message: i.message, row: i.rowIndex, field: i.field })),
+      triggered_by: session.session?.user.id ?? null,
+    })
+    .select()
+    .single();
+  if (runError || !run) throw new ApiError(runError?.message ?? "Failed to record sync run.");
+  return run as RentalSyncRun;
+}
+
+export async function listSyncRuns(sourceId?: string): Promise<RentalSyncRun[]> {
+  const db = client();
+  let query = db.from("rental_sync_runs").select("*").order("started_at", { ascending: false });
+  if (sourceId) query = query.eq("source_id", sourceId);
+  const { data, error } = await query;
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as RentalSyncRun[];
+}
+
+export async function listAggProperties(filter?: AggPropertyFilter): Promise<AggProperty[]> {
+  const db = client();
+  let query = db.from("agg_properties").select("*");
+  if (filter?.city) query = query.ilike("city", filter.city);
+  if (filter?.zip) query = query.eq("zip", filter.zip);
+  if (filter?.state) query = query.ilike("state", filter.state);
+  if (filter?.verification_status) query = query.eq("verification_status", filter.verification_status);
+  if (filter?.active !== undefined) query = query.eq("active", filter.active);
+  const { data, error } = await query;
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as AggProperty[];
+}
+
+export async function getAggProperty(id: string): Promise<AggProperty | null> {
+  const db = client();
+  const { data, error } = await db.from("agg_properties").select("*").eq("id", id).maybeSingle();
+  if (error) throw new ApiError(error.message);
+  return (data as AggProperty) ?? null;
+}
+
+export async function listAggUnitsForProperty(propertyId: string): Promise<AggUnit[]> {
+  const db = client();
+  const { data, error } = await db.from("agg_units").select("*").eq("agg_property_id", propertyId);
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as AggUnit[];
+}
+
+export async function listAggPropertySources(propertyId: string) {
+  const db = client();
+  const { data, error } = await db.from("agg_property_sources").select("*").eq("agg_property_id", propertyId);
+  if (error) throw new ApiError(error.message);
+  return data ?? [];
+}
+
+export async function verifyAggProperty(id: string): Promise<void> {
+  const db = client();
+  const now = new Date().toISOString();
+  const { error } = await db.from("agg_properties").update({ verification_status: "verified", last_verified: now, updated_at: now }).eq("id", id);
+  if (error) throw new ApiError(error.message);
+}
+
+export async function markAggPropertyInactive(id: string): Promise<void> {
+  const db = client();
+  const { error } = await db.from("agg_properties").update({ active: false, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new ApiError(error.message);
+}
+
+export async function listDuplicateCandidates(status?: DuplicateCandidateStatus): Promise<AggDuplicateCandidate[]> {
+  const db = client();
+  let query = db.from("agg_duplicate_candidates").select("*").order("confidence", { ascending: false });
+  if (status) query = query.eq("status", status);
+  const { data, error } = await query;
+  if (error) throw new ApiError(error.message);
+  return (data ?? []) as AggDuplicateCandidate[];
+}
+
+export async function resolveDuplicateCandidate(
+  candidateId: string,
+  action: "merge" | "keep_separate" | "ignore",
+  reviewerId: string,
+): Promise<void> {
+  const db = client();
+  const { data: candidate, error } = await db.from("agg_duplicate_candidates").select("*").eq("id", candidateId).maybeSingle();
+  if (error) throw new ApiError(error.message);
+  if (!candidate) return;
+  const now = new Date().toISOString();
+
+  if (action === "merge") {
+    const keepId = candidate.property_a_id as string;
+    const mergeId = candidate.property_b_id as string;
+    const { data: keep } = await db.from("agg_properties").select("total_units").eq("id", keepId).maybeSingle();
+    const { data: merged } = await db.from("agg_properties").select("total_units").eq("id", mergeId).maybeSingle();
+    if (keep && merged) {
+      await db.from("agg_property_sources").update({ agg_property_id: keepId, is_primary: false, updated_at: now }).eq("agg_property_id", mergeId);
+      await db.from("agg_units").update({ agg_property_id: keepId, updated_at: now }).eq("agg_property_id", mergeId);
+      await db.from("agg_properties").update({ active: false, updated_at: now }).eq("id", mergeId);
+      const combinedTotal = (keep.total_units ?? 0) + (merged.total_units ?? 0) || keep.total_units;
+      await db.from("agg_properties").update({ total_units: combinedTotal, updated_at: now }).eq("id", keepId);
+    }
+  }
+
+  await db
+    .from("agg_duplicate_candidates")
+    .update({
+      status: action === "merge" ? "merged" : action === "keep_separate" ? "kept_separate" : "ignored",
+      reviewed_by: reviewerId,
+      reviewed_at: now,
+    })
+    .eq("id", candidateId);
+}
+
+export async function getFreshnessConfig(): Promise<AggFreshnessConfig> {
+  const db = client();
+  const { data, error } = await db.from("agg_freshness_config").select("*").eq("id", "default").single();
+  if (error) throw new ApiError(error.message);
+  return data as AggFreshnessConfig;
+}
+
+export async function updateFreshnessConfig(patch: Partial<Omit<AggFreshnessConfig, "id">>): Promise<void> {
+  const db = client();
+  const { error } = await db.from("agg_freshness_config").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", "default");
+  if (error) throw new ApiError(error.message);
+}
+
+export async function getRentalAggregationSummary(): Promise<RentalAggregationSummary> {
+  const db = client();
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+  const { data: freshness } = await db.from("agg_freshness_config").select("needs_verification_days").eq("id", "default").maybeSingle();
+  const staleThresholdMs = (freshness?.needs_verification_days ?? 7) * 24 * 60 * 60 * 1000;
+
+  const { data: properties } = await db.from("agg_properties").select("*");
+  const allProperties = (properties ?? []) as AggProperty[];
+  const activeProperties = allProperties.filter((p) => p.active);
+
+  const { data: units } = await db.from("agg_units").select("*");
+  const allUnits = (units ?? []) as AggUnit[];
+  const activePropertyIds = new Set(activeProperties.map((p) => p.id));
+  const totalActiveUnits = allUnits.filter((u) => activePropertyIds.has(u.agg_property_id) && u.availability_status === "available").length;
+
+  const { count: pendingDuplicateCandidates } = await db.from("agg_duplicate_candidates").select("id", { count: "exact", head: true }).eq("status", "pending");
+  const { count: failedSyncRunsCount } = await db.from("rental_sync_runs").select("id", { count: "exact", head: true }).eq("status", "failed");
+
+  const newPropertiesToday = allProperties.filter((p) => p.created_at >= startOfToday).length;
+  const updatedPropertiesToday = allProperties.filter((p) => p.updated_at >= startOfToday).length;
+  const expiredPropertiesCount = allProperties.filter((p) => !p.active).length;
+  const needsVerificationCount = allProperties.filter((p) => p.verification_status === "needs_verification").length;
+  const duplicateRatePercent = activeProperties.length
+    ? Math.round((((pendingDuplicateCandidates ?? 0) / activeProperties.length) * 100))
+    : 0;
+  const missingRentCount = allUnits.filter((u) => u.monthly_rent_cents === null && u.rent_min_cents === null).length;
+  const missingPhotosCount = activeProperties.filter((p) => p.photos.length === 0).length;
+  const missingAvailabilityDateCount = allUnits.filter((u) => u.availability_status === "available" && !u.available_date).length;
+  const staleListingsCount = activeProperties.filter((p) => {
+    const lastTouch = new Date(p.last_verified ?? p.last_seen).getTime();
+    return now.getTime() - lastTouch > staleThresholdMs;
+  }).length;
+
+  return {
+    totalProperties: activeProperties.length,
+    totalActiveUnits,
+    newPropertiesToday,
+    updatedPropertiesToday,
+    expiredPropertiesCount,
+    needsVerificationCount,
+    duplicateRatePercent,
+    missingRentCount,
+    missingPhotosCount,
+    missingAvailabilityDateCount,
+    staleListingsCount,
+    pendingDuplicateCandidates: pendingDuplicateCandidates ?? 0,
+    failedSyncRunsCount: failedSyncRunsCount ?? 0,
+  };
+}
+
+export async function getSourceStats(): Promise<SourceStats[]> {
+  const db = client();
+  const { data: sources, error } = await db.from("rental_sources").select("*");
+  if (error) throw new ApiError(error.message);
+  const results: SourceStats[] = [];
+  for (const source of (sources ?? []) as RentalSource[]) {
+    const { count: propertiesImported } = await db.from("agg_property_sources").select("id", { count: "exact", head: true }).eq("source_id", source.id);
+    const { count: unitsImported } = await db.from("agg_unit_sources").select("id", { count: "exact", head: true }).eq("source_id", source.id);
+    const { data: runs } = await db.from("rental_sync_runs").select("*").eq("source_id", source.id).order("started_at", { ascending: false }).limit(1);
+    results.push({
+      source,
+      propertiesImported: propertiesImported ?? 0,
+      unitsImported: unitsImported ?? 0,
+      lastRun: (runs?.[0] as RentalSyncRun) ?? null,
+    });
+  }
+  return results;
+}

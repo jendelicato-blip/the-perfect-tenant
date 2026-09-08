@@ -51,6 +51,14 @@ import type {
   TenantPlusMembership,
   VerifiedPurchase,
   VerifiedTierConfig,
+  RentalSource,
+  RentalSyncRun,
+  AggProperty,
+  AggPropertySource,
+  AggUnit,
+  AggUnitSource,
+  AggDuplicateCandidate,
+  AggFreshnessConfig,
 } from "@/types/domain";
 import * as seed from "@/data/seed";
 
@@ -109,9 +117,17 @@ interface Db {
   tenantDocuments: TenantDocument[];
   passwords: Record<string, string>;
   currentUserId: string | null;
+  rentalSources: RentalSource[];
+  rentalSyncRuns: RentalSyncRun[];
+  aggProperties: AggProperty[];
+  aggPropertySources: AggPropertySource[];
+  aggUnits: AggUnit[];
+  aggUnitSources: AggUnitSource[];
+  aggDuplicateCandidates: AggDuplicateCandidate[];
+  aggFreshnessConfig: AggFreshnessConfig;
 }
 
-const STORAGE_KEY = "tpt.devstore.v8";
+const STORAGE_KEY = "tpt.devstore.v9";
 
 function freshDb(): Db {
   return {
@@ -169,6 +185,14 @@ function freshDb(): Db {
     tenantDocuments: [],
     passwords: { ...seed.seedPasswords },
     currentUserId: null,
+    rentalSources: [...seed.seedRentalSources],
+    rentalSyncRuns: [],
+    aggProperties: [...seed.seedAggProperties],
+    aggPropertySources: [...seed.seedAggPropertySources],
+    aggUnits: [...seed.seedAggUnits],
+    aggUnitSources: [...seed.seedAggUnitSources],
+    aggDuplicateCandidates: [],
+    aggFreshnessConfig: { ...seed.seedAggFreshnessConfig },
   };
 }
 

@@ -509,3 +509,116 @@ configures this.
 - **Deferred**: this only covers the two marketing hero photos, not property listing photos —
   those are landlord-uploaded (or seeded) and represent an actual property, so rotating them would
   misrepresent what's being rented; nothing about that path changes here.
+
+## Rental Property Aggregation Engine — Phase 1 (admin-only)
+
+A separate, parallel inventory system for aggregating rental listings from multiple external
+sources into one deduplicated, canonical database — conceptually similar to how a large rental
+marketplace unifies inventory from many property-management platforms. It does **not** touch
+`properties`, `applications`, or anything else the existing tenant/landlord marketplace depends on:
+nothing here is shown to a tenant yet. This ships admin-only first by design — public search only
+gets wired to this inventory once the admin tooling (source management, duplicate review,
+data-quality monitoring) has been exercised for real.
+
+### Legal/compliance stance — read this before adding a source
+
+There is no scraper anywhere in this system, and there must never be one. Every source is
+registered with an explicit `license_status` (`authorized` / `licensed` / `partner` /
+`user_submitted` / `public_data` / `review_required` / `disabled`), and a source can never be
+activated while its status is `review_required` or `disabled` — enforced by a CHECK constraint on
+`rental_sources` in the database itself, not just app-level discipline. The only connector
+implemented so far (`csv_upload`, see below) is deliberately push-based: an admin manually supplies
+a CSV export of data they've already attested they have rights to. Do not add a connector that
+fetches from a real named platform (a rental site, a "public" listing aggregator, anything without
+an actual licensing/API agreement) — the architecture supports it (see Connectors below), but
+building one without a real agreement would misrepresent what the system does.
+
+### Schema (`0017_rental_aggregation_engine.sql`)
+
+- **`rental_sources`** — the registry of every inventory source: type, license status, connector
+  key, priority rank (source reliability hierarchy — lower wins when two sources disagree on a
+  field), sync interval/rate limit, active flag.
+- **`rental_sync_runs`** — one row per sync attempt: counts (properties/units seen, created,
+  updated), duplicate candidates created, error log, status.
+- **`agg_properties`** / **`agg_units`** — the canonical, deduplicated records. A property's
+  `total_units` is a fact about the building; `agg_units.availability_status` is a separate,
+  per-unit fact — a 300-unit community with 7 available units is never represented as "available"
+  at the property level.
+- **`agg_property_sources`** / **`agg_unit_sources`** — provenance: every canonical record can be
+  backed by multiple source records, each keeping its own untouched `raw_data` payload. Nothing is
+  ever deleted here, including after a merge (see below) — `unique (source_id, source_property_id)`
+  is what lets a re-sync recognize "I've seen this one before" instead of creating a duplicate.
+- **`agg_duplicate_candidates`** — the review queue (see Matching below). `status` is one of
+  `pending` / `merged` / `kept_separate` / `ignored`; nothing outside `resolveDuplicateCandidate`
+  ever sets it to `merged`.
+- **`agg_freshness_config`** — a singleton row (same pattern as `platform_fee_config`) holding the
+  admin-configurable staleness thresholds and the duplicate-match confidence threshold.
+- RLS is a single admin-gated `for all` policy per table — nothing here is public yet.
+
+### Pipeline (`src/lib/aggregation/`)
+
+```
+CSV text --parseCsv--> rows --normalizeCsvRow--> normalized property+unit records
+  --validateParsedRow--> issues --buildSyncPlan (pure)--> per-property plan
+  (existing source? update canonical if this source outranks the current primary
+   : create canonical + check candidateProperties via computeMatchConfidence)
+  --executed by localApi.ts/supabaseApi.ts runCsvSync--> DB writes + rental_sync_runs row
+```
+
+- **`normalize.ts`** — pure functions turning free-text source fields into standardized types:
+  `"1 Bed"` / `"1BR"` / `"One Bedroom"` → `1`; `"Baths: 2"` → `2`; `"$1,450/mo"` → `145000` (cents);
+  `"Available Now"` → today's date; `"Available 10/1/26"` → `"2026-10-01"`. Never guesses when a
+  value can't be parsed — returns `null` rather than fabricate a date or number.
+- **`matching.ts`** — `computeMatchConfidence(a, b)` blends address+ZIP match, geographic
+  proximity (haversine distance), property-name token-overlap similarity, management-company/phone/
+  website exact matches into a single 0–1 confidence score with the matched signals named. This is
+  the only place duplicate detection happens, and it never merges anything itself — it only scores.
+  The worked example from the design spec this was built against ("Midtown Apartments" / "Midtown
+  Apartment Homes" at "123 Main Street" / "123 Main St.") scores 0.73, just above the default 0.72
+  review threshold — see the inline comment there before changing the address-match weight.
+- **`csv.ts`** — the CSV connector's parsing (a small hand-rolled RFC4180-ish parser — quoted
+  fields, embedded commas, `""` escaping) and field-by-field normalization into the universal
+  property/unit shape.
+- **`connector.ts`** — the generic `SourceConnector` interface (`authenticate` +
+  `fetchAndNormalize`) that every future source integration implements. `csv_upload` is the only
+  one registered in `CONNECTORS`; a real API/feed connector adds one entry here and nothing else in
+  the sync pipeline, matching engine, or admin UI needs to change.
+- **`syncPipeline.ts`** — `buildSyncPlan`, the one piece of decision logic shared between
+  `localApi.ts` and `supabaseApi.ts`'s `runCsvSync`: given what a source already reported and what a
+  new run just produced, decide what's an update vs. genuinely new, and which existing *other*
+  properties look like possible duplicates. Each backend executes the resulting plan with its own
+  storage calls — this is what keeps the decision logic from drifting between the two
+  implementations (same pattern as `lib/match/score.ts` and `lib/perfectRent/engine.ts`).
+
+### Source priority / conflicting data (spec section 6)
+
+Each `rental_sources` row has a `priority_rank` (1 = most authoritative, e.g. a direct property
+manager; 5 = least, e.g. public records). When a sync updates a property/unit that already has a
+`primary_source_id`, it only overwrites the canonical fields if its own `priority_rank` is at least
+as good as the current primary source's — otherwise it still updates its own `agg_property_sources`/
+`agg_unit_sources` row (so the data isn't lost) but leaves the canonical record's authoritative
+fields alone. This is intentionally simple (whole-record priority, not per-field) — a per-field
+provenance UI showing exactly which source "won" each individual value is a reasonable follow-up,
+not built in this phase.
+
+### Admin console (`src/pages/admin/RentalAggregation.tsx`, `/admin/rental-aggregation`)
+
+Source management (add/activate/deactivate/mark unreliable, license-status enforcement mirrored
+from the DB constraint), CSV upload + sync trigger, sync run history, an inventory browser with
+expandable per-property unit lists, the duplicate review queue (merge/keep separate/ignore — merge
+moves the "losing" property's units and source records onto the "keeping" property and marks the
+loser `active: false`, never deletes it), and the freshness-threshold editor.
+
+### What's deliberately not built yet
+
+- **No connectors beyond CSV upload.** No real third-party API/feed integration exists — see the
+  compliance stance above for why.
+- **No public search or map.** `agg_properties`/`agg_units` aren't read from anywhere a tenant can
+  reach. Wiring that up is a distinct follow-up once the admin tooling has real mileage on it.
+- **No automatic recurring sync.** `rental_sources.sync_interval_minutes` models the intent, but
+  actually running syncs on a schedule needs a scheduler — Supabase's `pg_cron` extension is
+  available on this project (confirmed but not enabled) and is the natural next step; today every
+  sync is admin-triggered.
+- **No per-field provenance UI** (see Source priority above) and no automated fraud/trust-score
+  computation beyond the `trust_score`/`quality_flags` columns existing on the schema — nothing
+  populates them algorithmically yet.

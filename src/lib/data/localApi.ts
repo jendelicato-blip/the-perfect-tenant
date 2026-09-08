@@ -60,10 +60,20 @@ import type {
   VerifiedPurchase,
   VerifiedTierConfig,
   WebhookEvent,
+  RentalSource,
+  RentalSyncRun,
+  AggProperty,
+  AggUnit,
+  AggDuplicateCandidate,
+  AggFreshnessConfig,
+  DuplicateCandidateStatus,
 } from "@/types/domain";
 import { computeOnTimeStreak } from "@/types/domain";
 import { getDb, mutate, newId } from "./localStore";
 import { scoreMatch } from "@/lib/match/score";
+import { getConnector } from "@/lib/aggregation/connector";
+import { buildSyncPlan } from "@/lib/aggregation/syncPipeline";
+import type { MatchableProperty } from "@/lib/aggregation/matching";
 import {
   ApiError,
   type AdminMetrics,
@@ -79,6 +89,10 @@ import {
   type PropertyFilter,
   type ScoredProperty,
   type TenantAutopayStatus,
+  type NewRentalSource,
+  type AggPropertyFilter,
+  type RentalAggregationSummary,
+  type SourceStats,
 } from "./types";
 
 export { ApiError };
@@ -1524,3 +1538,506 @@ export async function getOwnPaymentSetup(
 // Local dev-mode has no Stripe integration — the Pricing page falls back to
 // setSubscriptionTier directly when this returns null.
 export const startCheckout: import("./types").StartCheckout = async () => null;
+
+// ---------- Rental Property Aggregation Engine (admin-only, Phase 1) ----------
+
+function toMatchableProperty(p: AggProperty): MatchableProperty {
+  return {
+    id: p.id,
+    property_name: p.property_name,
+    address: p.address,
+    city: p.city,
+    state: p.state,
+    zip: p.zip,
+    latitude: p.latitude,
+    longitude: p.longitude,
+    management_company: p.management_company,
+    management_contact: p.management_contact,
+    website: p.website,
+  };
+}
+
+export async function listRentalSources(): Promise<RentalSource[]> {
+  const db = getDb();
+  return [...db.rentalSources].sort((a, b) => a.priority_rank - b.priority_rank);
+}
+
+export async function createRentalSource(input: NewRentalSource): Promise<RentalSource> {
+  return mutate((db) => {
+    const now = new Date().toISOString();
+    const source: RentalSource = {
+      id: newId("rsrc"),
+      ...input,
+      active: false, // never activate on creation — an admin must explicitly flip this after confirming license_status
+      last_synced_at: null,
+      created_by: db.currentUserId,
+      created_at: now,
+      updated_at: now,
+    };
+    db.rentalSources.push(source);
+    return source;
+  });
+}
+
+export async function updateRentalSource(id: string, patch: Partial<Omit<RentalSource, "id" | "created_at">>): Promise<void> {
+  mutate((db) => {
+    const source = db.rentalSources.find((s) => s.id === id);
+    if (!source) return;
+    const next = { ...source, ...patch };
+    if (next.active && (next.license_status === "review_required" || next.license_status === "disabled")) {
+      throw new ApiError("Cannot activate a source whose license status is review_required or disabled.");
+    }
+    Object.assign(source, patch, { updated_at: new Date().toISOString() });
+  });
+}
+
+export async function markSourceUnreliable(sourceId: string, note: string): Promise<void> {
+  mutate((db) => {
+    const source = db.rentalSources.find((s) => s.id === sourceId);
+    if (!source) return;
+    source.active = false;
+    source.notes = source.notes ? `${source.notes}\n\n[Marked unreliable] ${note}` : `[Marked unreliable] ${note}`;
+    source.updated_at = new Date().toISOString();
+  });
+}
+
+// Runs the one connector implemented in this phase end-to-end: parse ->
+// normalize -> validate -> match against existing canonical properties ->
+// create/update canonical records + provenance -> log the run. See
+// src/lib/aggregation/syncPipeline.ts for the shared (non-DB) planning logic.
+export async function runCsvSync(sourceId: string, csvText: string): Promise<RentalSyncRun> {
+  const db = getDb();
+  const source = db.rentalSources.find((s) => s.id === sourceId);
+  if (!source) throw new ApiError("Unknown rental source.");
+  if (!source.active) throw new ApiError("This source is not active.");
+
+  const connector = getConnector(source.connector_key);
+  if (!connector) throw new ApiError(`No connector registered for "${source.connector_key}".`);
+  await connector.authenticate();
+  const { rows, issues } = await connector.fetchAndNormalize({ payload: csvText });
+
+  const existingSourcePropertyMap = new Map<string, string>();
+  db.aggPropertySources
+    .filter((ps) => ps.source_id === sourceId)
+    .forEach((ps) => existingSourcePropertyMap.set(ps.source_property_id, ps.agg_property_id));
+
+  const citiesInRows = new Set(rows.map((r) => `${r.property.city.toLowerCase()}|${r.property.state.toLowerCase()}`));
+  const candidateProperties = db.aggProperties
+    .filter((p) => citiesInRows.has(`${p.city.toLowerCase()}|${p.state.toLowerCase()}`))
+    .map(toMatchableProperty);
+
+  const plan = buildSyncPlan({
+    rows,
+    issues,
+    existingSourcePropertyMap,
+    candidateProperties,
+    duplicateMatchThreshold: db.aggFreshnessConfig.duplicate_match_threshold,
+  });
+
+  return mutate((draft) => {
+    const now = new Date().toISOString();
+    let propertiesCreated = 0;
+    let propertiesUpdated = 0;
+    let unitsCreated = 0;
+    let unitsUpdated = 0;
+    let duplicatesCreated = 0;
+
+    for (const item of plan.items) {
+      let aggPropertyId: string;
+
+      if (item.existingAggPropertyId) {
+        aggPropertyId = item.existingAggPropertyId;
+        const propSource = draft.aggPropertySources.find(
+          (ps) => ps.source_id === sourceId && ps.source_property_id === item.sourcePropertyId,
+        );
+        if (propSource) {
+          propSource.raw_data = item.property.raw_data;
+          propSource.last_seen = now;
+          propSource.updated_at = now;
+        }
+        const existingProperty = draft.aggProperties.find((p) => p.id === aggPropertyId);
+        if (existingProperty) {
+          const currentPrimary = existingProperty.primary_source_id
+            ? draft.rentalSources.find((s) => s.id === existingProperty.primary_source_id)
+            : null;
+          const winsPriority = !currentPrimary || source.priority_rank <= currentPrimary.priority_rank;
+          if (winsPriority) {
+            existingProperty.property_name = item.property.property_name;
+            existingProperty.property_type = item.property.property_type;
+            existingProperty.address = item.property.address;
+            existingProperty.city = item.property.city;
+            existingProperty.state = item.property.state;
+            existingProperty.zip = item.property.zip;
+            existingProperty.county = item.property.county;
+            existingProperty.latitude = item.property.latitude;
+            existingProperty.longitude = item.property.longitude;
+            existingProperty.neighborhood = item.property.neighborhood;
+            existingProperty.description = item.property.description;
+            existingProperty.year_built = item.property.year_built;
+            existingProperty.total_units = item.property.total_units;
+            existingProperty.amenities = item.property.amenities;
+            existingProperty.pet_policy = item.property.pet_policy;
+            existingProperty.parking = item.property.parking;
+            existingProperty.utilities = item.property.utilities;
+            existingProperty.website = item.property.website;
+            existingProperty.management_company = item.property.management_company;
+            existingProperty.management_contact = item.property.management_contact;
+            existingProperty.primary_source_id = sourceId;
+          }
+          existingProperty.last_seen = now;
+          existingProperty.updated_at = now;
+        }
+        propertiesUpdated++;
+      } else {
+        const newProperty: AggProperty = {
+          id: newId("aggp"),
+          property_name: item.property.property_name,
+          property_type: item.property.property_type,
+          address: item.property.address,
+          city: item.property.city,
+          state: item.property.state,
+          zip: item.property.zip,
+          county: item.property.county,
+          latitude: item.property.latitude,
+          longitude: item.property.longitude,
+          neighborhood: item.property.neighborhood,
+          description: item.property.description,
+          year_built: item.property.year_built,
+          total_units: item.property.total_units,
+          amenities: item.property.amenities,
+          pet_policy: item.property.pet_policy,
+          parking: item.property.parking,
+          utilities: item.property.utilities,
+          photos: [],
+          videos: [],
+          website: item.property.website,
+          management_company: item.property.management_company,
+          management_contact: item.property.management_contact,
+          primary_source_id: sourceId,
+          verification_status: "unverified",
+          trust_score: 100,
+          quality_flags: [],
+          last_verified: null,
+          last_seen: now,
+          active: true,
+          created_at: now,
+          updated_at: now,
+        };
+        draft.aggProperties.push(newProperty);
+        aggPropertyId = newProperty.id;
+        propertiesCreated++;
+
+        draft.aggPropertySources.push({
+          id: newId("aggps"),
+          agg_property_id: aggPropertyId,
+          source_id: sourceId,
+          source_property_id: item.sourcePropertyId,
+          source_url: item.property.source_url,
+          raw_data: item.property.raw_data,
+          is_primary: true,
+          first_seen: now,
+          last_seen: now,
+          last_verified: null,
+          created_at: now,
+          updated_at: now,
+        });
+
+        for (const match of item.duplicateMatches) {
+          draft.aggDuplicateCandidates.push({
+            id: newId("aggdc"),
+            property_a_id: aggPropertyId,
+            property_b_id: match.existingPropertyId,
+            confidence: match.confidence,
+            match_reasons: match.reasons,
+            status: "pending",
+            reviewed_by: null,
+            reviewed_at: null,
+            created_at: now,
+          });
+          duplicatesCreated++;
+        }
+      }
+
+      for (const unit of item.units) {
+        const existingUnitSource = draft.aggUnitSources.find(
+          (us) => us.source_id === sourceId && us.source_unit_id === unit.source_unit_id,
+        );
+        if (existingUnitSource) {
+          existingUnitSource.raw_data = unit.raw_data;
+          existingUnitSource.last_seen = now;
+          existingUnitSource.updated_at = now;
+          const existingUnit = draft.aggUnits.find((u) => u.id === existingUnitSource.agg_unit_id);
+          if (existingUnit) {
+            const unitPrimary = existingUnit.primary_source_id
+              ? draft.rentalSources.find((s) => s.id === existingUnit.primary_source_id)
+              : null;
+            const winsPriority = !unitPrimary || source.priority_rank <= unitPrimary.priority_rank;
+            if (winsPriority) {
+              existingUnit.unit_number = unit.unit_number;
+              existingUnit.floor = unit.floor;
+              existingUnit.bedrooms = unit.bedrooms;
+              existingUnit.bathrooms = unit.bathrooms;
+              existingUnit.square_feet = unit.square_feet;
+              existingUnit.monthly_rent_cents = unit.monthly_rent_cents;
+              existingUnit.rent_min_cents = unit.rent_min_cents;
+              existingUnit.rent_max_cents = unit.rent_max_cents;
+              existingUnit.deposit_cents = unit.deposit_cents;
+              existingUnit.available_date = unit.available_date;
+              existingUnit.lease_term = unit.lease_term;
+              existingUnit.furnished = unit.furnished;
+              existingUnit.pets_allowed = unit.pets_allowed;
+              existingUnit.parking = unit.parking;
+              existingUnit.utilities = unit.utilities;
+              existingUnit.unit_amenities = unit.unit_amenities;
+              existingUnit.availability_status = unit.availability_status;
+              existingUnit.primary_source_id = sourceId;
+            }
+            existingUnit.last_seen = now;
+            existingUnit.updated_at = now;
+          }
+          unitsUpdated++;
+        } else {
+          const newUnit: AggUnit = {
+            id: newId("aggu"),
+            agg_property_id: aggPropertyId,
+            unit_number: unit.unit_number,
+            floor: unit.floor,
+            bedrooms: unit.bedrooms,
+            bathrooms: unit.bathrooms,
+            square_feet: unit.square_feet,
+            monthly_rent_cents: unit.monthly_rent_cents,
+            rent_min_cents: unit.rent_min_cents,
+            rent_max_cents: unit.rent_max_cents,
+            deposit_cents: unit.deposit_cents,
+            available_date: unit.available_date,
+            lease_term: unit.lease_term,
+            furnished: unit.furnished,
+            pets_allowed: unit.pets_allowed,
+            parking: unit.parking,
+            utilities: unit.utilities,
+            unit_amenities: unit.unit_amenities,
+            photos: [],
+            availability_status: unit.availability_status,
+            primary_source_id: sourceId,
+            trust_score: 100,
+            quality_flags: [],
+            last_seen: now,
+            last_verified: null,
+            created_at: now,
+            updated_at: now,
+          };
+          draft.aggUnits.push(newUnit);
+          draft.aggUnitSources.push({
+            id: newId("aggus"),
+            agg_unit_id: newUnit.id,
+            source_id: sourceId,
+            source_unit_id: unit.source_unit_id,
+            source_url: unit.source_url,
+            raw_data: unit.raw_data,
+            is_primary: true,
+            first_seen: now,
+            last_seen: now,
+            last_verified: null,
+            created_at: now,
+            updated_at: now,
+          });
+          unitsCreated++;
+        }
+      }
+    }
+
+    const sourceRef = draft.rentalSources.find((s) => s.id === sourceId);
+    if (sourceRef) sourceRef.last_synced_at = now;
+
+    const run: RentalSyncRun = {
+      id: newId("rsr"),
+      source_id: sourceId,
+      status: rows.length === 0 ? "failed" : plan.issues.length > 0 ? "partial" : "succeeded",
+      started_at: now,
+      finished_at: now,
+      properties_seen: plan.items.length,
+      properties_created: propertiesCreated,
+      properties_updated: propertiesUpdated,
+      units_seen: rows.length,
+      units_created: unitsCreated,
+      units_updated: unitsUpdated,
+      duplicate_candidates_created: duplicatesCreated,
+      errors_count: plan.issues.length,
+      error_log: plan.issues.map((i) => ({ message: i.message, row: i.rowIndex, field: i.field })),
+      triggered_by: draft.currentUserId,
+      created_at: now,
+    };
+    draft.rentalSyncRuns.push(run);
+    return run;
+  });
+}
+
+export async function listSyncRuns(sourceId?: string): Promise<RentalSyncRun[]> {
+  const db = getDb();
+  const runs = sourceId ? db.rentalSyncRuns.filter((r) => r.source_id === sourceId) : db.rentalSyncRuns;
+  return [...runs].sort((a, b) => b.started_at.localeCompare(a.started_at));
+}
+
+export async function listAggProperties(filter?: AggPropertyFilter): Promise<AggProperty[]> {
+  const db = getDb();
+  return db.aggProperties.filter((p) => {
+    if (filter?.city && p.city.toLowerCase() !== filter.city.toLowerCase()) return false;
+    if (filter?.zip && p.zip !== filter.zip) return false;
+    if (filter?.state && p.state.toLowerCase() !== filter.state.toLowerCase()) return false;
+    if (filter?.verification_status && p.verification_status !== filter.verification_status) return false;
+    if (filter?.active !== undefined && p.active !== filter.active) return false;
+    return true;
+  });
+}
+
+export async function getAggProperty(id: string): Promise<AggProperty | null> {
+  const db = getDb();
+  return db.aggProperties.find((p) => p.id === id) ?? null;
+}
+
+export async function listAggUnitsForProperty(propertyId: string): Promise<AggUnit[]> {
+  const db = getDb();
+  return db.aggUnits.filter((u) => u.agg_property_id === propertyId);
+}
+
+export async function listAggPropertySources(propertyId: string) {
+  const db = getDb();
+  return db.aggPropertySources.filter((ps) => ps.agg_property_id === propertyId);
+}
+
+export async function verifyAggProperty(id: string): Promise<void> {
+  mutate((db) => {
+    const p = db.aggProperties.find((x) => x.id === id);
+    if (!p) return;
+    p.verification_status = "verified";
+    p.last_verified = new Date().toISOString();
+    p.updated_at = new Date().toISOString();
+  });
+}
+
+export async function markAggPropertyInactive(id: string): Promise<void> {
+  mutate((db) => {
+    const p = db.aggProperties.find((x) => x.id === id);
+    if (!p) return;
+    p.active = false;
+    p.updated_at = new Date().toISOString();
+  });
+}
+
+export async function listDuplicateCandidates(status?: DuplicateCandidateStatus): Promise<AggDuplicateCandidate[]> {
+  const db = getDb();
+  const candidates = status ? db.aggDuplicateCandidates.filter((c) => c.status === status) : db.aggDuplicateCandidates;
+  return [...candidates].sort((a, b) => b.confidence - a.confidence);
+}
+
+// Merging (spec sections 5 & 13): property B's units and source records all
+// move under property A, B is deactivated (never deleted — its history stays
+// queryable), and the candidate is marked resolved. Keep-separate/ignore just
+// resolve the candidate with no data changes.
+export async function resolveDuplicateCandidate(
+  candidateId: string,
+  action: "merge" | "keep_separate" | "ignore",
+  reviewerId: string,
+): Promise<void> {
+  mutate((db) => {
+    const candidate = db.aggDuplicateCandidates.find((c) => c.id === candidateId);
+    if (!candidate) return;
+    const now = new Date().toISOString();
+
+    if (action === "merge") {
+      const [keepId, mergeId] = [candidate.property_a_id, candidate.property_b_id];
+      const keep = db.aggProperties.find((p) => p.id === keepId);
+      const merged = db.aggProperties.find((p) => p.id === mergeId);
+      if (keep && merged) {
+        db.aggPropertySources.filter((ps) => ps.agg_property_id === mergeId).forEach((ps) => {
+          ps.agg_property_id = keepId;
+          ps.is_primary = false;
+          ps.updated_at = now;
+        });
+        db.aggUnits.filter((u) => u.agg_property_id === mergeId).forEach((u) => {
+          u.agg_property_id = keepId;
+          u.updated_at = now;
+        });
+        merged.active = false;
+        merged.updated_at = now;
+        keep.total_units = (keep.total_units ?? 0) + (merged.total_units ?? 0) || keep.total_units;
+        keep.updated_at = now;
+      }
+    }
+
+    candidate.status = action === "merge" ? "merged" : action === "keep_separate" ? "kept_separate" : "ignored";
+    candidate.reviewed_by = reviewerId;
+    candidate.reviewed_at = now;
+  });
+}
+
+export async function getFreshnessConfig(): Promise<AggFreshnessConfig> {
+  const db = getDb();
+  return db.aggFreshnessConfig;
+}
+
+export async function updateFreshnessConfig(patch: Partial<Omit<AggFreshnessConfig, "id">>): Promise<void> {
+  mutate((db) => {
+    Object.assign(db.aggFreshnessConfig, patch, { updated_at: new Date().toISOString() });
+  });
+}
+
+export async function getRentalAggregationSummary(): Promise<RentalAggregationSummary> {
+  const db = getDb();
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const freshness = db.aggFreshnessConfig;
+  const staleThresholdMs = freshness.needs_verification_days * 24 * 60 * 60 * 1000;
+
+  const activeProperties = db.aggProperties.filter((p) => p.active);
+  const totalActiveUnits = db.aggUnits.filter(
+    (u) => activeProperties.some((p) => p.id === u.agg_property_id) && u.availability_status === "available",
+  ).length;
+  const newPropertiesToday = db.aggProperties.filter((p) => p.created_at >= startOfToday).length;
+  const updatedPropertiesToday = db.aggProperties.filter((p) => p.updated_at >= startOfToday).length;
+  const expiredPropertiesCount = db.aggProperties.filter((p) => !p.active).length;
+  const needsVerificationCount = db.aggProperties.filter((p) => p.verification_status === "needs_verification").length;
+  const pendingDuplicateCandidates = db.aggDuplicateCandidates.filter((c) => c.status === "pending").length;
+  const duplicateRatePercent = activeProperties.length
+    ? Math.round((pendingDuplicateCandidates / activeProperties.length) * 100)
+    : 0;
+  const missingRentCount = db.aggUnits.filter((u) => u.monthly_rent_cents === null && u.rent_min_cents === null).length;
+  const missingPhotosCount = activeProperties.filter((p) => p.photos.length === 0).length;
+  const missingAvailabilityDateCount = db.aggUnits.filter(
+    (u) => u.availability_status === "available" && !u.available_date,
+  ).length;
+  const staleListingsCount = activeProperties.filter((p) => {
+    const lastTouch = new Date(p.last_verified ?? p.last_seen).getTime();
+    return now.getTime() - lastTouch > staleThresholdMs;
+  }).length;
+  const failedSyncRunsCount = db.rentalSyncRuns.filter((r) => r.status === "failed").length;
+
+  return {
+    totalProperties: activeProperties.length,
+    totalActiveUnits,
+    newPropertiesToday,
+    updatedPropertiesToday,
+    expiredPropertiesCount,
+    needsVerificationCount,
+    duplicateRatePercent,
+    missingRentCount,
+    missingPhotosCount,
+    missingAvailabilityDateCount,
+    staleListingsCount,
+    pendingDuplicateCandidates,
+    failedSyncRunsCount,
+  };
+}
+
+export async function getSourceStats(): Promise<SourceStats[]> {
+  const db = getDb();
+  return db.rentalSources.map((source) => {
+    const runs = db.rentalSyncRuns.filter((r) => r.source_id === source.id).sort((a, b) => b.started_at.localeCompare(a.started_at));
+    return {
+      source,
+      propertiesImported: db.aggPropertySources.filter((ps) => ps.source_id === source.id).length,
+      unitsImported: db.aggUnitSources.filter((us) => us.source_id === source.id).length,
+      lastRun: runs[0] ?? null,
+    };
+  });
+}

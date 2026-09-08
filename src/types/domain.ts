@@ -866,3 +866,274 @@ export interface AdFrequencyRules {
   max_partner_cards_per_page: number;
   ads_enabled: boolean;
 }
+
+// ============================================================
+// Rental Property Aggregation Engine (admin-only, Phase 1)
+// ============================================================
+// A deliberately separate model from Property/PropertyWithPhotos above — this
+// aggregates multi-unit inventory from external sources into a canonical
+// database; it isn't wired into the tenant-facing marketplace yet. See
+// supabase/migrations/0017_rental_aggregation_engine.sql and
+// docs/ARCHITECTURE.md for the full design.
+
+export type RentalSourceType =
+  | "direct_property_manager"
+  | "pms_feed"
+  | "licensed_api"
+  | "user_submitted"
+  | "public_data"
+  | "other";
+
+export const RENTAL_SOURCE_TYPE_LABELS: Record<RentalSourceType, string> = {
+  direct_property_manager: "Direct property manager",
+  pms_feed: "Property-management software feed",
+  licensed_api: "Licensed third-party API",
+  user_submitted: "User-submitted listing",
+  public_data: "Public property data",
+  other: "Other",
+};
+
+// Never activate a source whose status is review_required or disabled — see
+// the CHECK constraint on rental_sources in the migration.
+export type DataLicenseStatus =
+  | "authorized"
+  | "licensed"
+  | "partner"
+  | "user_submitted"
+  | "public_data"
+  | "review_required"
+  | "disabled";
+
+export const DATA_LICENSE_STATUS_LABELS: Record<DataLicenseStatus, string> = {
+  authorized: "Authorized",
+  licensed: "Licensed",
+  partner: "Partner",
+  user_submitted: "User submitted",
+  public_data: "Public data",
+  review_required: "Review required",
+  disabled: "Disabled",
+};
+
+export interface RentalSource {
+  id: string;
+  name: string;
+  source_type: RentalSourceType;
+  license_status: DataLicenseStatus;
+  connector_key: string;
+  priority_rank: number;
+  sync_interval_minutes: number | null;
+  rate_limit_per_hour: number | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  notes: string | null;
+  active: boolean;
+  last_synced_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SyncRunStatus = "running" | "succeeded" | "failed" | "partial";
+
+export interface SyncRunErrorEntry {
+  message: string;
+  row?: number;
+  field?: string;
+}
+
+export interface RentalSyncRun {
+  id: string;
+  source_id: string;
+  status: SyncRunStatus;
+  started_at: string;
+  finished_at: string | null;
+  properties_seen: number;
+  properties_created: number;
+  properties_updated: number;
+  units_seen: number;
+  units_created: number;
+  units_updated: number;
+  duplicate_candidates_created: number;
+  errors_count: number;
+  error_log: SyncRunErrorEntry[];
+  triggered_by: string | null;
+  created_at: string;
+}
+
+export type AggPropertyType =
+  | "apartment_community"
+  | "apartment"
+  | "condo"
+  | "townhome"
+  | "single_family"
+  | "duplex"
+  | "multifamily"
+  | "student_housing"
+  | "other";
+
+export const AGG_PROPERTY_TYPE_LABELS: Record<AggPropertyType, string> = {
+  apartment_community: "Apartment community",
+  apartment: "Apartment",
+  condo: "Condo",
+  townhome: "Townhome",
+  single_family: "Single-family home",
+  duplex: "Duplex",
+  multifamily: "Multifamily",
+  student_housing: "Student housing",
+  other: "Other",
+};
+
+export type AggVerificationStatus = "unverified" | "needs_verification" | "verified";
+
+export interface AggManagementContact {
+  name?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface AggPetPolicy {
+  dogs_allowed?: boolean;
+  cats_allowed?: boolean;
+  notes?: string;
+}
+
+export interface AggProperty {
+  id: string;
+  property_name: string;
+  property_type: AggPropertyType;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  county: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  neighborhood: string | null;
+  description: string | null;
+  year_built: number | null;
+  total_units: number | null;
+  amenities: string[];
+  pet_policy: AggPetPolicy;
+  parking: string | null;
+  utilities: string[];
+  photos: string[];
+  videos: string[];
+  website: string | null;
+  management_company: string | null;
+  management_contact: AggManagementContact;
+  primary_source_id: string | null;
+  verification_status: AggVerificationStatus;
+  trust_score: number;
+  quality_flags: string[];
+  last_verified: string | null;
+  last_seen: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AggPropertySource {
+  id: string;
+  agg_property_id: string;
+  source_id: string;
+  source_property_id: string;
+  source_url: string | null;
+  raw_data: Record<string, unknown>;
+  is_primary: boolean;
+  first_seen: string;
+  last_seen: string;
+  last_verified: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AggAvailabilityStatus =
+  | "available"
+  | "available_soon"
+  | "contact_for_availability"
+  | "application_pending"
+  | "rented"
+  | "leased"
+  | "unavailable"
+  | "expired"
+  | "needs_verification";
+
+export const AGG_AVAILABILITY_STATUS_LABELS: Record<AggAvailabilityStatus, string> = {
+  available: "Available",
+  available_soon: "Available soon",
+  contact_for_availability: "Contact for availability",
+  application_pending: "Application pending",
+  rented: "Rented",
+  leased: "Leased",
+  unavailable: "Unavailable",
+  expired: "Expired",
+  needs_verification: "Needs verification",
+};
+
+export interface AggUnit {
+  id: string;
+  agg_property_id: string;
+  unit_number: string | null;
+  floor: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  square_feet: number | null;
+  monthly_rent_cents: number | null;
+  rent_min_cents: number | null;
+  rent_max_cents: number | null;
+  deposit_cents: number | null;
+  available_date: string | null;
+  lease_term: string | null;
+  furnished: boolean;
+  pets_allowed: AggPetPolicy;
+  parking: string | null;
+  utilities: string[];
+  unit_amenities: string[];
+  photos: string[];
+  availability_status: AggAvailabilityStatus;
+  primary_source_id: string | null;
+  trust_score: number;
+  quality_flags: string[];
+  last_seen: string;
+  last_verified: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AggUnitSource {
+  id: string;
+  agg_unit_id: string;
+  source_id: string;
+  source_unit_id: string;
+  source_url: string | null;
+  raw_data: Record<string, unknown>;
+  is_primary: boolean;
+  first_seen: string;
+  last_seen: string;
+  last_verified: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type DuplicateCandidateStatus = "pending" | "merged" | "kept_separate" | "ignored";
+
+export interface AggDuplicateCandidate {
+  id: string;
+  property_a_id: string;
+  property_b_id: string;
+  confidence: number;
+  match_reasons: string[];
+  status: DuplicateCandidateStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface AggFreshnessConfig {
+  id: string;
+  needs_verification_days: number;
+  reduced_ranking_days: number;
+  auto_inactive_days: number;
+  duplicate_match_threshold: number;
+  updated_at: string;
+}

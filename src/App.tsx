@@ -49,6 +49,7 @@ const LandlordMarketplace = lazyNamed(() => import("@/pages/landlord/Marketplace
 const LandlordTenantPassportView = lazyNamed(() => import("@/pages/landlord/TenantPassportView"), "LandlordTenantPassportView");
 const LandlordInterests = lazyNamed(() => import("@/pages/landlord/Interests"), "LandlordInterests");
 const AdminDashboard = lazyNamed(() => import("@/pages/admin/Admin"), "AdminDashboard");
+const RentalAggregationAdmin = lazyNamed(() => import("@/pages/admin/RentalAggregation"), "RentalAggregationAdmin");
 
 function RouteLoading() {
   return <div className="mx-auto max-w-2xl px-4 py-10 text-sm text-slate-500">Loading…</div>;
@@ -294,6 +295,14 @@ function App() {
           element={
             <RequireAdmin>
               <AdminDashboard />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/rental-aggregation"
+          element={
+            <RequireAdmin>
+              <RentalAggregationAdmin />
             </RequireAdmin>
           }
         />
