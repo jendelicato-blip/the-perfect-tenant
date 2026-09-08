@@ -12,6 +12,7 @@ export function ConversationList() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [emails, setEmails] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
@@ -24,6 +25,7 @@ export function ConversationList() {
         }),
       );
       setEmails(Object.fromEntries(entries));
+      setLoading(false);
     });
   }, [user]);
 
@@ -34,7 +36,7 @@ export function ConversationList() {
       <BackButton fallback={user.role === "landlord" ? "/landlord" : "/home"} className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Messages</h1>
       <div className="mt-6 space-y-2">
-        {conversations.length === 0 && <p className="text-sm text-slate-500">No conversations yet.</p>}
+        {!loading && conversations.length === 0 && <p className="text-sm text-slate-500">No conversations yet.</p>}
         {conversations.map((c) => {
           const otherId = c.tenant_id === user.id ? c.landlord_id : c.tenant_id;
           return (

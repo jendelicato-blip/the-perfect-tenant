@@ -11,6 +11,7 @@ export function LandlordInterests() {
   const { user } = useAuth();
   const [rows, setRows] = useState<{ interest: TenantInterest; tenant: TenantSummary }[]>([]);
   const [properties, setProperties] = useState<Record<string, PropertyWithPhotos>>({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
@@ -20,6 +21,7 @@ export function LandlordInterests() {
         [...new Set(results.map((r) => r.interest.property_id))].map((id) => api.getProperty(id)),
       );
       setProperties(Object.fromEntries(props.filter((p): p is PropertyWithPhotos => p !== null).map((p) => [p.id, p])));
+      setLoading(false);
     });
   }, [user]);
 
@@ -30,7 +32,7 @@ export function LandlordInterests() {
       <p className="mt-1 text-sm text-slate-600">Verified tenants who told you they're interested in a listing.</p>
 
       <div className="mt-6 space-y-4">
-        {rows.length === 0 && <p className="text-sm text-slate-500">No tenant interest yet.</p>}
+        {!loading && rows.length === 0 && <p className="text-sm text-slate-500">No tenant interest yet.</p>}
         {rows.map(({ interest, tenant }) => {
           const rentalReady = computeRentalReady(tenant.verification);
           const property = properties[interest.property_id];

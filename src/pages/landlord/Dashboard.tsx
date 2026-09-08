@@ -17,12 +17,15 @@ export function LandlordDashboard() {
   const [properties, setProperties] = useState<PropertyWithPhotos[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [payments, setPayments] = useState<PaymentVerification[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    api.listPropertiesForLandlord(user.id).then(setProperties);
-    api.listApplicationsForLandlord(user.id).then(setApplications);
-    api.listPaymentVerificationsForLandlord(user.id).then(setPayments);
+    Promise.all([
+      api.listPropertiesForLandlord(user.id).then(setProperties),
+      api.listApplicationsForLandlord(user.id).then(setApplications),
+      api.listPaymentVerificationsForLandlord(user.id).then(setPayments),
+    ]).then(() => setLoading(false));
   }, [user]);
 
   const occupiedPropertyIds = new Set(applications.filter((a) => a.status === "approved").map((a) => a.property_id));
@@ -96,7 +99,7 @@ export function LandlordDashboard() {
       </div>
 
       <div className="mt-6 space-y-4">
-        {properties.length === 0 && <p className="text-sm text-slate-500">No listings yet — create your first one.</p>}
+        {!loading && properties.length === 0 && <p className="text-sm text-slate-500">No listings yet — create your first one.</p>}
         {properties.map((p) => {
           const count = applications.filter((a) => a.property_id === p.id).length;
           return (

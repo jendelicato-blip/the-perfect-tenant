@@ -152,6 +152,7 @@ export function TenantPerfectPay() {
   const [events, setEvents] = useState<RewardEvent[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [refunds, setRefunds] = useState<PaymentRefund[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
 
   function loadDisputesAndRefunds(tenantId: string) {
     api.listDisputesForTenant(tenantId).then(setDisputes);
@@ -161,7 +162,10 @@ export function TenantPerfectPay() {
   useEffect(() => {
     if (!user) return;
     api.getTenantSummary(user.id).then(setSummary);
-    api.listPaymentVerificationsForTenant(user.id).then(setPayments);
+    api.listPaymentVerificationsForTenant(user.id).then((p) => {
+      setPayments(p);
+      setPaymentsLoading(false);
+    });
     api.listPerfectPayMilestones().then(setMilestones);
     api.listRewardEvents(user.id).then(setEvents);
     api.getCurrentRentalForTenant(user.id).then((rental) => setProperty(rental?.property ?? null));
@@ -322,7 +326,7 @@ export function TenantPerfectPay() {
           confirmation.
         </p>
         <div className="mt-3 text-sm">
-          {payments.length === 0 && <p className="text-slate-500">No payments recorded yet.</p>}
+          {!paymentsLoading && payments.length === 0 && <p className="text-slate-500">No payments recorded yet.</p>}
           {[...payments]
             .sort((a, b) => b.period_start.localeCompare(a.period_start))
             .map((p) => (

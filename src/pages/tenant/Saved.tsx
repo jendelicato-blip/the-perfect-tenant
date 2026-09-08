@@ -8,10 +8,14 @@ import type { PropertyWithPhotos } from "@/types/domain";
 export function TenantSaved() {
   const { user } = useAuth();
   const [properties, setProperties] = useState<PropertyWithPhotos[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    api.listSavedProperties(user.id).then(setProperties);
+    api.listSavedProperties(user.id).then((props) => {
+      setProperties(props);
+      setLoading(false);
+    });
   }, [user]);
 
   async function toggleSave(propertyId: string) {
@@ -25,7 +29,7 @@ export function TenantSaved() {
       <BackButton fallback="/home" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Saved properties</h1>
       <div className="mt-6 space-y-4">
-        {properties.length === 0 && <p className="text-sm text-slate-500">You haven't saved any properties yet.</p>}
+        {!loading && properties.length === 0 && <p className="text-sm text-slate-500">You haven't saved any properties yet.</p>}
         {properties.map((p) => (
           <PropertyCard key={p.id} property={p} saved onToggleSave={() => toggleSave(p.id)} />
         ))}

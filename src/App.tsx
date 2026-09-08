@@ -1,47 +1,64 @@
+import { lazy, Suspense, type ComponentType } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { RequireRole } from "@/components/RequireRole";
 import { RequireAdmin } from "@/components/RequireAdmin";
 import { RootRoute } from "@/components/RootRoute";
-import { ForLandlords } from "@/pages/ForLandlords";
-import { About } from "@/pages/About";
-import { Login } from "@/pages/Login";
-import { Signup } from "@/pages/Signup";
-import { ConversationList, ConversationThread } from "@/pages/Messages";
-import { TenantHome } from "@/pages/tenant/Home";
-import { TenantOnboarding } from "@/pages/tenant/Onboarding";
-import { TenantSearch } from "@/pages/tenant/Search";
-import { TenantMatches } from "@/pages/tenant/Matches";
-import { PropertyDetail } from "@/pages/tenant/PropertyDetail";
-import { TenantApplications } from "@/pages/tenant/Applications";
-import { TenantSaved } from "@/pages/tenant/Saved";
-import { TenantPassport } from "@/pages/tenant/Passport";
-import { TenantVerificationCenter } from "@/pages/tenant/VerificationCenter";
-import { TenantVerified } from "@/pages/tenant/Verified";
-import { TenantPlus } from "@/pages/tenant/Plus";
-import { TenantInvitations } from "@/pages/tenant/Invitations";
-import { TenantPerfectPay } from "@/pages/tenant/PerfectPay";
-import { PerfectPaySetup } from "@/pages/tenant/PerfectPaySetup";
-import { TenantRewards } from "@/pages/tenant/Rewards";
-import { Partners } from "@/pages/tenant/Partners";
-import { LandlordDashboard } from "@/pages/landlord/Dashboard";
-import { LandlordRentCollection } from "@/pages/landlord/RentCollection";
-import { LandlordPayouts } from "@/pages/landlord/Payouts";
-import { LandlordPerfectPaySettings } from "@/pages/landlord/PerfectPaySettings";
-import { LandlordPropertyForm } from "@/pages/landlord/PropertyForm";
-import { LandlordApplicants } from "@/pages/landlord/Applicants";
-import { LandlordMyTenants } from "@/pages/landlord/MyTenants";
-import { LandlordSavedTenants } from "@/pages/landlord/SavedTenants";
-import { LandlordPricing } from "@/pages/landlord/Pricing";
-import { LandlordMarketplace } from "@/pages/landlord/Marketplace";
-import { LandlordTenantPassportView } from "@/pages/landlord/TenantPassportView";
-import { LandlordInterests } from "@/pages/landlord/Interests";
-import { AdminDashboard } from "@/pages/admin/Admin";
+
+// Route-level code splitting: each page ships in its own chunk instead of
+// one ~700KB bundle every visitor downloads up front, most of it for pages
+// their role can't even reach (a tenant never runs the landlord bundle, and
+// vice versa). `lazyNamed` just adapts these pages' named exports to the
+// default-export shape React.lazy requires.
+function lazyNamed<P extends object>(factory: () => Promise<Record<string, ComponentType<P>>>, name: string) {
+  return lazy(() => factory().then((m) => ({ default: m[name] })));
+}
+
+const ForLandlords = lazyNamed(() => import("@/pages/ForLandlords"), "ForLandlords");
+const About = lazyNamed(() => import("@/pages/About"), "About");
+const Login = lazyNamed(() => import("@/pages/Login"), "Login");
+const Signup = lazyNamed(() => import("@/pages/Signup"), "Signup");
+const ConversationList = lazyNamed(() => import("@/pages/Messages"), "ConversationList");
+const ConversationThread = lazyNamed(() => import("@/pages/Messages"), "ConversationThread");
+const TenantHome = lazyNamed(() => import("@/pages/tenant/Home"), "TenantHome");
+const TenantOnboarding = lazyNamed(() => import("@/pages/tenant/Onboarding"), "TenantOnboarding");
+const TenantSearch = lazyNamed(() => import("@/pages/tenant/Search"), "TenantSearch");
+const TenantMatches = lazyNamed(() => import("@/pages/tenant/Matches"), "TenantMatches");
+const PropertyDetail = lazyNamed(() => import("@/pages/tenant/PropertyDetail"), "PropertyDetail");
+const TenantApplications = lazyNamed(() => import("@/pages/tenant/Applications"), "TenantApplications");
+const TenantSaved = lazyNamed(() => import("@/pages/tenant/Saved"), "TenantSaved");
+const TenantPassport = lazyNamed(() => import("@/pages/tenant/Passport"), "TenantPassport");
+const TenantVerificationCenter = lazyNamed(() => import("@/pages/tenant/VerificationCenter"), "TenantVerificationCenter");
+const TenantVerified = lazyNamed(() => import("@/pages/tenant/Verified"), "TenantVerified");
+const TenantPlus = lazyNamed(() => import("@/pages/tenant/Plus"), "TenantPlus");
+const TenantInvitations = lazyNamed(() => import("@/pages/tenant/Invitations"), "TenantInvitations");
+const TenantPerfectPay = lazyNamed(() => import("@/pages/tenant/PerfectPay"), "TenantPerfectPay");
+const PerfectPaySetup = lazyNamed(() => import("@/pages/tenant/PerfectPaySetup"), "PerfectPaySetup");
+const TenantRewards = lazyNamed(() => import("@/pages/tenant/Rewards"), "TenantRewards");
+const Partners = lazyNamed(() => import("@/pages/tenant/Partners"), "Partners");
+const LandlordDashboard = lazyNamed(() => import("@/pages/landlord/Dashboard"), "LandlordDashboard");
+const LandlordRentCollection = lazyNamed(() => import("@/pages/landlord/RentCollection"), "LandlordRentCollection");
+const LandlordPayouts = lazyNamed(() => import("@/pages/landlord/Payouts"), "LandlordPayouts");
+const LandlordPerfectPaySettings = lazyNamed(() => import("@/pages/landlord/PerfectPaySettings"), "LandlordPerfectPaySettings");
+const LandlordPropertyForm = lazyNamed(() => import("@/pages/landlord/PropertyForm"), "LandlordPropertyForm");
+const LandlordApplicants = lazyNamed(() => import("@/pages/landlord/Applicants"), "LandlordApplicants");
+const LandlordMyTenants = lazyNamed(() => import("@/pages/landlord/MyTenants"), "LandlordMyTenants");
+const LandlordSavedTenants = lazyNamed(() => import("@/pages/landlord/SavedTenants"), "LandlordSavedTenants");
+const LandlordPricing = lazyNamed(() => import("@/pages/landlord/Pricing"), "LandlordPricing");
+const LandlordMarketplace = lazyNamed(() => import("@/pages/landlord/Marketplace"), "LandlordMarketplace");
+const LandlordTenantPassportView = lazyNamed(() => import("@/pages/landlord/TenantPassportView"), "LandlordTenantPassportView");
+const LandlordInterests = lazyNamed(() => import("@/pages/landlord/Interests"), "LandlordInterests");
+const AdminDashboard = lazyNamed(() => import("@/pages/admin/Admin"), "AdminDashboard");
+
+function RouteLoading() {
+  return <div className="mx-auto max-w-2xl px-4 py-10 text-sm text-slate-500">Loading…</div>;
+}
 
 function App() {
   return (
     <div className="min-h-full">
       <Navbar />
+      <Suspense fallback={<RouteLoading />}>
       <Routes>
         <Route path="/" element={<RootRoute />} />
         <Route path="/for-landlords" element={<ForLandlords />} />
@@ -281,6 +298,7 @@ function App() {
           }
         />
       </Routes>
+      </Suspense>
     </div>
   );
 }

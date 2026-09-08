@@ -10,10 +10,14 @@ import { computeRentalReady, type TenantSummary } from "@/types/domain";
 export function LandlordSavedTenants() {
   const { user } = useAuth();
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    api.listSavedTenants(user.id).then(setTenants);
+    api.listSavedTenants(user.id).then((t) => {
+      setTenants(t);
+      setLoading(false);
+    });
   }, [user]);
 
   return (
@@ -21,7 +25,7 @@ export function LandlordSavedTenants() {
       <BackButton fallback="/landlord" className="mb-4" />
       <h1 className="text-2xl font-bold text-slate-900">Saved tenants</h1>
       <div className="mt-6 space-y-4">
-        {tenants.length === 0 && <p className="text-sm text-slate-500">No saved tenants yet.</p>}
+        {!loading && tenants.length === 0 && <p className="text-sm text-slate-500">No saved tenants yet.</p>}
         {tenants.map((t) => {
           const rentalReady = computeRentalReady(t.verification);
           return (

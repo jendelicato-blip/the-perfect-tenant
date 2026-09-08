@@ -37,6 +37,7 @@ export function PerfectPartnersAdminSection() {
   const [revenue, setRevenue] = useState<AdvertisingRevenue | null>(null);
   const [newPartner, setNewPartner] = useState({ name: "", category: "moving" as AdCategory, emoji: "🤝", tagline: "" });
   const [newOffer, setNewOffer] = useState<Record<string, { title: string; description: string; offer_text: string; promo_code: string; cta_label: string }>>({});
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     const [c, p, pp, o, r, rev] = await Promise.all([
@@ -53,6 +54,7 @@ export function PerfectPartnersAdminSection() {
     setOffers(o);
     setRules(r);
     setRevenue(rev);
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -133,7 +135,7 @@ export function PerfectPartnersAdminSection() {
       <h3 className="mt-8 text-lg font-semibold text-slate-900">Campaign Review Queue</h3>
       <p className="text-sm text-slate-600">Nothing goes live to a tenant until approved here.</p>
       <div className="mt-4 space-y-2">
-        {pending.length === 0 && <p className="text-sm text-slate-500">No campaigns waiting on review.</p>}
+        {!loading && pending.length === 0 && <p className="text-sm text-slate-500">No campaigns waiting on review.</p>}
         {pending.map((c) => (
           <Card key={c.id} className="p-4">
             <div className="flex items-start justify-between gap-3">

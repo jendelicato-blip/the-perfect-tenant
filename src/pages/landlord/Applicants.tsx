@@ -30,21 +30,27 @@ export function LandlordApplicants() {
   const [paymentStatus, setPaymentStatus] = useState<Record<string, PaymentStatus>>({});
   const [recording, setRecording] = useState<string | null>(null);
   const [recorded, setRecorded] = useState<Record<string, string[]>>({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!propertyId) return;
-    api.getProperty(propertyId).then(setProperty);
-    api.listApplicantsForProperty(propertyId).then(setRows);
+    const loads = [
+      api.getProperty(propertyId).then(setProperty),
+      api.listApplicantsForProperty(propertyId).then(setRows),
+    ];
     if (user) {
-      api.listSavedTenants(user.id).then((tenants) => setSavedIds(new Set(tenants.map((t) => t.tenant.user_id))));
-      api.listPaymentVerificationsForLandlord(user.id).then((payments) => {
-        const byTenant: Record<string, string[]> = {};
-        for (const p of payments.filter((x) => x.property_id === propertyId)) {
-          (byTenant[p.tenant_id] ??= []).push(p.period_start.slice(0, 7));
-        }
-        setRecorded(byTenant);
-      });
+      loads.push(
+        api.listSavedTenants(user.id).then((tenants) => setSavedIds(new Set(tenants.map((t) => t.tenant.user_id)))),
+        api.listPaymentVerificationsForLandlord(user.id).then((payments) => {
+          const byTenant: Record<string, string[]> = {};
+          for (const p of payments.filter((x) => x.property_id === propertyId)) {
+            (byTenant[p.tenant_id] ??= []).push(p.period_start.slice(0, 7));
+          }
+          setRecorded(byTenant);
+        }),
+      );
     }
+    Promise.all(loads).then(() => setLoading(false));
   }, [propertyId, user]);
 
   async function updateStatus(applicationId: string, status: ApplicationStatus) {
@@ -82,7 +88,7 @@ export function LandlordApplicants() {
       <h1 className="text-2xl font-bold text-slate-900">Applicants{property ? ` — ${property.address}` : ""}</h1>
 
       <div className="mt-6 space-y-4">
-        {rows.length === 0 && <p className="text-sm text-slate-500">No applicants yet.</p>}
+        {!loading && rows.length === 0 && <p className="text-sm text-slate-500">No applicants yet.</p>}
         {rows.map(({ application, tenant }) => {
           const rentalReady = computeRentalReady(tenant.verification);
           const tenantId = tenant.tenant.user_id;

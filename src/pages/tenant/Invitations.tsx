@@ -12,13 +12,18 @@ export function TenantInvitations() {
   const { user } = useAuth();
   const [invitations, setInvitations] = useState<TenantInvitation[]>([]);
   const [properties, setProperties] = useState<Record<string, PropertyWithPhotos>>({});
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     if (!user) return;
-    const invites = await api.listInvitationsForTenant(user.id);
-    setInvitations(invites);
-    const props = await Promise.all([...new Set(invites.map((i) => i.property_id))].map((id) => api.getProperty(id)));
-    setProperties(Object.fromEntries(props.filter((p): p is PropertyWithPhotos => p !== null).map((p) => [p.id, p])));
+    try {
+      const invites = await api.listInvitationsForTenant(user.id);
+      setInvitations(invites);
+      const props = await Promise.all([...new Set(invites.map((i) => i.property_id))].map((id) => api.getProperty(id)));
+      setProperties(Object.fromEntries(props.filter((p): p is PropertyWithPhotos => p !== null).map((p) => [p.id, p])));
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -38,7 +43,7 @@ export function TenantInvitations() {
       <p className="mt-1 text-sm text-slate-600">Landlords who invited you to apply based on your Perfect10ant Passport.</p>
 
       <div className="mt-6 space-y-4">
-        {invitations.length === 0 && <p className="text-sm text-slate-500">No landlord interest yet.</p>}
+        {!loading && invitations.length === 0 && <p className="text-sm text-slate-500">No landlord interest yet.</p>}
         {invitations.map((inv) => {
           const property = properties[inv.property_id];
           return (
