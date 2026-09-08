@@ -5,7 +5,6 @@ import type { ScoredProperty } from "@/lib/data/api";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { computePerfectRent } from "@/lib/perfectRent/engine";
 import { buildJurisdictionAllowed } from "@/lib/perfectRent/jurisdiction";
-import { BackButton } from "@/components/ui/BackButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { RentalReadyBadge } from "@/components/ui/Badge";
@@ -84,7 +83,6 @@ export function TenantHome() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
-      <BackButton fallback="/home" className="mb-4" />
       <div className="flex items-center justify-between">
         <h1 className="font-serif text-2xl font-semibold text-ink-900">
           {timeOfDayGreeting()}, {displayNameFromEmail(user.email)} 👋
