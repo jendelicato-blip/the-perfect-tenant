@@ -43,10 +43,10 @@ export function Login() {
         <h1 className="text-xl font-semibold text-slate-900">Log in</h1>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <FormRow label="Email">
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </FormRow>
           <FormRow label="Password">
-            <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </FormRow>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <Button type="submit" disabled={submitting} className="w-full">
